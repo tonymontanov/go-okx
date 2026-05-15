@@ -197,10 +197,56 @@ Prometheus/любой другой системой.
 
 ## Примеры
 
-- `examples/orderbook-watcher` — подключение к public WS и поддержание
-  локального стакана с CRC32-валидацией. Не требует API-ключей.
-- `examples/simple-trade` — лимитный ордер: place → modify → cancel.
-  Требует `OKX_API_KEY` / `OKX_SECRET_KEY` / `OKX_PASSPHRASE` в env.
+| Пример | Что делает | Ключи | OKX_ALLOW_LIVE |
+|---|---|---|---|
+| `examples/market-data` | symbol-info, order-book snapshot, candles | нет | нет |
+| `examples/public-streams` | bbo-tbt, mark-price, index, last, agg trades | нет | нет |
+| `examples/orderbook-watcher` | public books + локальный стакан с CRC32 | нет | нет |
+| `examples/account-info` | symbol-info, position, open orders | да | нет |
+| `examples/simple-trade` | place → modify → cancel лимитного ордера далеко от рынка | да | **да** |
+| `examples/inventory-tracker` | private streams + market buy + close position (одноразовый смоук) | да | **да** |
+| `examples/inventory-monitor` | бесконечный мониторинг позиции и ордеров (до Ctrl-C) | да | нет |
+
+### Как запускать
+
+Один раз создай `.env` из шаблона и пропиши ключи:
+
+```bash
+cp .env.example .env
+# открой .env, заполни OKX_API_KEY / OKX_SECRET_KEY / OKX_PASSPHRASE
+# для торговых примеров поставь OKX_ALLOW_LIVE=1
+```
+
+Любой пример запускается через wrapper, который читает `.env`:
+
+```bash
+./scripts/run.sh ./examples/market-data
+./scripts/run.sh ./examples/public-streams
+./scripts/run.sh ./examples/account-info
+./scripts/run.sh ./examples/simple-trade
+./scripts/run.sh ./examples/inventory-tracker
+```
+
+Без `.env` тоже можно — пример без ключей просто игнорирует пустые переменные:
+
+```bash
+go run ./examples/market-data
+```
+
+### Дополнительные переменные
+
+| Переменная | Где используется | По умолчанию |
+|---|---|---|
+| `OKX_INSTRUMENT` | account-info, market-data, public-streams, inventory-tracker | `BTC-USDT-SWAP` |
+| `OKX_SIZE` | inventory-tracker | `1` (контракт) |
+| `OKX_HOLD_SECONDS` | inventory-tracker | `5` секунд между BUY и close |
+
+Пример «дешёвого» live-теста (~1-2 USDT на спред + комиссии):
+
+```bash
+OKX_INSTRUMENT=DOGE-USDT-SWAP OKX_SIZE=1 \
+  ./scripts/run.sh ./examples/inventory-tracker
+```
 
 ## Codestyle
 

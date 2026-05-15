@@ -11,12 +11,15 @@
 
 ВНИМАНИЕ:
     Пример использует production endpoint. Без demo-режима (он вне Scope v1)
-    он реально отправит ордера. Перед запуском уберите комментарии «//» в
-    блоке с placeOrder, если действительно готовы.
+    он реально отправит ордера. Для защиты от случайного запуска требуется
+    явно выставить OKX_ALLOW_LIVE=1.
 
 ЗАПУСК:
-    OKX_API_KEY=... OKX_SECRET_KEY=... OKX_PASSPHRASE=... \
-        go run ./examples/simple-trade
+    export OKX_API_KEY=...
+    export OKX_SECRET_KEY=...
+    export OKX_PASSPHRASE=...
+    export OKX_ALLOW_LIVE=1
+    go run ./examples/simple-trade
 */
 
 package main
@@ -42,6 +45,9 @@ func main() {
 	if apiKey == "" || secret == "" || pass == "" {
 		log.Fatal("OKX_API_KEY / OKX_SECRET_KEY / OKX_PASSPHRASE must be set")
 	}
+	if os.Getenv("OKX_ALLOW_LIVE") != "1" {
+		log.Fatal("refusing to trade against production: set OKX_ALLOW_LIVE=1 explicitly")
+	}
 
 	var cfg okx.Config = okx.DefaultConfig()
 	cfg.APIKey = apiKey
@@ -63,11 +69,7 @@ func main() {
 	ctx, cancel = context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
-	// Раскомментируйте перед реальным запуском.
-	_ = ctx
-	_ = placeOrder
-	_ = swap
-	// placeOrder(ctx, swap)
+	placeOrder(ctx, swap)
 }
 
 // placeOrder показывает полный happy-path: place → modify → cancel.
@@ -84,7 +86,7 @@ func placeOrder(ctx context.Context, swap *swappkg.Client) {
 		OrderType:     types.OrderTypeLimit,
 		Price:         price,
 		Size:          size,
-		ClientOrderID: "example_" + fmt.Sprint(time.Now().UnixMilli()),
+		ClientOrderID: "ex" + fmt.Sprint(time.Now().UnixMilli()),
 	})
 	if err != nil {
 		log.Fatalf("CreateOrder: %v", classify(err))
@@ -117,12 +119,17 @@ func placeOrder(ctx context.Context, swap *swappkg.Client) {
 }
 
 // classify приводит ошибку SDK к человеко-читаемой форме с категорией.
+// Включает Cause — без него network-проблемы выглядят как "rest: transport error"
+// без подробностей.
 func classify(err error) string {
 	if err == nil {
 		return "<nil>"
 	}
 	var e *okx.Error
 	if errors.As(err, &e) {
+		if e.Cause != nil {
+			return fmt.Sprintf("[%s code=%s status=%d] %s: %v", e.Kind, e.OKXCode, e.HTTPStatus, e.Message, e.Cause)
+		}
 		return fmt.Sprintf("[%s code=%s status=%d] %s", e.Kind, e.OKXCode, e.HTTPStatus, e.Message)
 	}
 	return err.Error()

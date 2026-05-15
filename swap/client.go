@@ -17,9 +17,10 @@ Signer, Logger, Config) и предоставляет четыре доменн�
   - Все REST-вызовы идут через parent.REST() — общий пул соединений.
 
 ОСОБЕННОСТИ ID:
-  - clOrdId в OKX ограничен 32 символами [A-Za-z0-9_], тег `tag` — 16. SDK
-    эту проверку делает на этапе сборки запроса (см. trading.go) и
-    возвращает ErrorKindInvalidRequest без отправки.
+  - clOrdId в OKX ограничен 32 символами [A-Za-z0-9] (case-sensitive
+    alphanumerics, без подчёркиваний и пунктуации), тег `tag` — 16 символов
+    того же алфавита. SDK эту проверку делает на этапе сборки запроса
+    (см. trading.go) и возвращает ErrorKindInvalidRequest без отправки.
 */
 
 package swap

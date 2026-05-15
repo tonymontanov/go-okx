@@ -53,7 +53,9 @@ import (
 const MaxBatchSize = 20
 
 // clOrdIDPattern — допустимые символы и длина clOrdId (см. OKX docs).
-var clOrdIDPattern = regexp.MustCompile(`^[A-Za-z0-9_]{1,32}$`)
+// OKX требует case-sensitive alphanumerics, БЕЗ подчёркиваний и других символов;
+// длина 1..32. Любые '_', '-', '.' в clOrdId биржа отклоняет кодом 51000.
+var clOrdIDPattern = regexp.MustCompile(`^[A-Za-z0-9]{1,32}$`)
 
 // TradingClient — саб-клиент торговли.
 type TradingClient struct {
@@ -115,7 +117,7 @@ func (t *TradingClient) CreateOrder(ctx context.Context, req types.CreateOrderRe
 		return info, okx.NewError(okx.ErrorKindUnknown, "", "trading.CreateOrder: parse", err)
 	}
 	if len(entries) == 0 {
-		return info, okx.NewError(okx.ErrorKindExchange, "", "trading.CreateOrder: empty data", nil)
+		return info, okx.NewError(okx.ErrorKindExchange, "", "trading.CreateOrder: empty data (top-level code="+resp.Code+", msg="+resp.Msg+")", nil)
 	}
 	var e orderActionResponseEntry = entries[0]
 	if e.SCode != "" && e.SCode != "0" {
@@ -156,7 +158,7 @@ func (t *TradingClient) buildCreateOrderBody(req types.CreateOrderRequest) (map[
 		return nil, okx.NewError(okx.ErrorKindInvalidRequest, "", "trading.CreateOrder: Size is zero", nil)
 	}
 	if req.ClientOrderID != "" && !clOrdIDPattern.MatchString(req.ClientOrderID) {
-		return nil, okx.NewError(okx.ErrorKindInvalidRequest, "", "trading.CreateOrder: invalid ClientOrderID (1..32 chars of [A-Za-z0-9_])", nil)
+		return nil, okx.NewError(okx.ErrorKindInvalidRequest, "", "trading.CreateOrder: invalid ClientOrderID (1..32 chars of [A-Za-z0-9], no underscores or punctuation)", nil)
 	}
 
 	var orderType types.OrderType = req.OrderType

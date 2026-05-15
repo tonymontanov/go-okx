@@ -20,7 +20,8 @@ OKXFuturesConnector мог обходиться без потерь информ
                      точности; при сборке запроса конвертируется в строку без
                      потерь.
   - Price          — цена (для limit/post_only/fok/ioc). Для market не нужна.
-  - ClientOrderID  — клиентский id (1..32 символа [A-Za-z0-9_]).
+  - ClientOrderID  — клиентский id (1..32 символа [A-Za-z0-9], только буквы и
+                     цифры; биржа отклонит подчёркивания/дефисы/точки кодом 51000).
   - ReduceOnly     — флаг ReduceOnly. Включается также автоматически в OptimalLimitIOC.
   - TdMode         — margin-mode. Если пустой — выводится автоматически (cross
                      для обычного ордера; см. ResolveTdMode в swap/client).

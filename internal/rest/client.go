@@ -195,7 +195,15 @@ func (c *Client) Do(ctx context.Context, opts Options) (Response, map[string]str
 		if err = codec.Unmarshal(raw, &resp); err != nil {
 			return resp, rateLimits, okxerr.New(okxerr.ErrorKindUnknown, "", "rest: parse response", err)
 		}
-		if resp.Code != "" && resp.Code != "0" {
+		// OKX-семантика top-level code:
+		//   "0"      — success;
+		//   "1"      — bulk error: ВСЕ элементы data[] упали (см. sCode/sMsg);
+		//   "2"      — bulk partial: часть элементов data[] упала;
+		//   прочее   — fatal на уровне запроса (auth, rate-limit, validation).
+		// Для "1" и "2" мы отдаём data наверх, чтобы domain-слой (Trading и т.п.)
+		// извлёк per-entry sCode/sMsg и собрал точную ошибку. Без этого
+		// пользователь видит бесполезное "All operations failed".
+		if resp.Code != "" && resp.Code != "0" && resp.Code != "1" && resp.Code != "2" {
 			return resp, rateLimits, &okxerr.Error{
 				Kind:       okxerr.MapOKXCode(resp.Code, resp.Msg),
 				HTTPStatus: httpResp.StatusCode,
