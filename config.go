@@ -37,7 +37,8 @@ import "time"
 // Транспортные URL'ы OKX. Объявлены как vars, а не const, чтобы тесты могли
 // переопределить (например, на mock-сервер).
 var (
-	// DefaultRestBaseURL — production REST endpoint OKX v5.
+	// DefaultRestBaseURL — production REST endpoint OKX v5. Используется и в
+	// production, и в demo (для demo нужен лишь заголовок x-simulated-trading: 1).
 	DefaultRestBaseURL string = "https://www.okx.com"
 	// DefaultWsPublicURL — production WS endpoint для публичных каналов
 	// (books/tickers/marks/index).
@@ -48,6 +49,14 @@ var (
 	// DefaultWsBusinessURL — production WS endpoint для business-каналов
 	// (algo-orders, deposit-info, candles). Зарезервирован на будущее.
 	DefaultWsBusinessURL string = "wss://ws.okx.com:8443/ws/v5/business"
+
+	// DemoWsPublicURL — demo (paper-trading) WS endpoint для публичных каналов.
+	// OKX выделяет под demo отдельный хост wspap.okx.com.
+	DemoWsPublicURL string = "wss://wspap.okx.com:8443/ws/v5/public"
+	// DemoWsPrivateURL — demo WS endpoint для приватных каналов.
+	DemoWsPrivateURL string = "wss://wspap.okx.com:8443/ws/v5/private"
+	// DemoWsBusinessURL — demo WS endpoint для business-каналов.
+	DemoWsBusinessURL string = "wss://wspap.okx.com:8443/ws/v5/business"
 )
 
 // Config — публичная конфигурация SDK. Передаётся в NewClient.
@@ -80,6 +89,19 @@ type Config struct {
 
 	// UserAgent — значение User-Agent для REST-запросов. Если пусто — "go-okx/v2".
 	UserAgent string
+
+	// Demo — переводит клиент в режим OKX Demo Trading (paper-trading).
+	// Эффект:
+	//   - REST: ко всем запросам добавляется заголовок "x-simulated-trading: 1".
+	//     URL остаётся production (DefaultRestBaseURL), потому что demo и prod
+	//     отвечают по одному и тому же хосту — отличает их только заголовок.
+	//   - WS:   URL'ы public/private/business АВТОМАТИЧЕСКИ заменяются на
+	//     wspap.okx.com, если пользователь не задал их явно через WS.PublicURL
+	//     и т. п. Если WS.PublicURL уже задан (например, на mock-сервер) —
+	//     SDK его не трогает.
+	//   - Ключи нужны отдельные: на OKX demo и prod ключи НЕ совместимы;
+	//     создайте demo-ключи в Profile → Demo Trading → API.
+	Demo bool
 }
 
 // RestConfig — настройки HTTP-транспорта.
@@ -198,14 +220,24 @@ func (c Config) withDefaults() Config {
 		c.REST.IdleConnTimeout = def.REST.IdleConnTimeout
 	}
 
+	// WS endpoints: для Demo выбираем wspap.okx.com, для prod — ws.okx.com.
+	// Если пользователь явно задал URL — НИЧЕГО не подменяем (он умнее SDK).
+	var defPublic string = def.WS.PublicURL
+	var defPrivate string = def.WS.PrivateURL
+	var defBusiness string = def.WS.BusinessURL
+	if c.Demo {
+		defPublic = DemoWsPublicURL
+		defPrivate = DemoWsPrivateURL
+		defBusiness = DemoWsBusinessURL
+	}
 	if c.WS.PublicURL == "" {
-		c.WS.PublicURL = def.WS.PublicURL
+		c.WS.PublicURL = defPublic
 	}
 	if c.WS.PrivateURL == "" {
-		c.WS.PrivateURL = def.WS.PrivateURL
+		c.WS.PrivateURL = defPrivate
 	}
 	if c.WS.BusinessURL == "" {
-		c.WS.BusinessURL = def.WS.BusinessURL
+		c.WS.BusinessURL = defBusiness
 	}
 	if c.WS.HandshakeTimeout == 0 {
 		c.WS.HandshakeTimeout = def.WS.HandshakeTimeout

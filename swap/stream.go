@@ -495,6 +495,49 @@ type rawOrderPush struct {
 	UTime     string `json:"uTime"`
 }
 
+// WatchAccount — канал account (приватный). Каждое push-сообщение содержит
+// полный снимок баланса unified-account; callback получает types.Balance с
+// тем же набором полей, что и REST GetBalance. Это удобно для торгового ядра:
+// одна и та же доменная модель используется и на старте (REST snapshot), и
+// далее (живые обновления). Без credentials возвращает ErrorKindAuth.
+//
+// Канал account аккаунтный — без instType/instId. Подписка живёт пока ctx
+// не отменён; reconnect/relogin/resubscribe прозрачны для callback'а.
+func (s *StreamClient) WatchAccount(
+	ctx context.Context,
+	handler func(types.Balance), errHandler func(error),
+) error {
+	if !s.c.signerEnabled() {
+		var err error = okx.NewError(okx.ErrorKindAuth, "", "stream.WatchAccount: credentials required", nil)
+		if errHandler != nil {
+			errHandler(err)
+		}
+		return err
+	}
+	var sub *ws.Subscription = &ws.Subscription{
+		Channel: "account",
+		Handler: func(_ string, payload []byte) {
+			var pushes []rawBalance
+			if err := codec.Unmarshal(payload, &pushes); err != nil {
+				s.c.logger().Warn("stream.WatchAccount: parse", okx.Err(err))
+				return
+			}
+			var i int
+			for i = 0; i < len(pushes); i++ {
+				handler(convertBalance(pushes[i]))
+			}
+		},
+	}
+	s.c.privateConn().Start(ctx)
+	if err := s.c.privateConn().Subscribe(sub); err != nil {
+		if errHandler != nil {
+			errHandler(err)
+		}
+		return err
+	}
+	return nil
+}
+
 // WatchOpenOrders — канал orders (приватный). Callback получает список ордеров,
 // присланных в одном push'е (один или несколько одновременно).
 func (s *StreamClient) WatchOpenOrders(

@@ -15,10 +15,13 @@ Module path: `github.com/tonymontanov/go-okx/v2`
 | M1: swap.MarketData (SymbolInfo, OrderBook snapshot, HistoricalCandles) | ✅ | contract-тесты |
 | M2: orderbook.Engine (snapshot+delta+seqId+CRC32 checksum+resync) | ✅ | 9 unit-тестов |
 | M3: internal/ws.Conn (connect/login/ping/reconnect+backoff/resubscribe/dispatch) | ✅ | 6 ws-тестов |
-| M3: swap.Stream — WebSocket-подписки (Watch*) | ✅ | 8 методов: Orderbook/Spread/Mark/Index/Last/AggTrades/Position/OpenOrders |
+| M3: swap.Stream — WebSocket-подписки (Watch*) | ✅ | 9 методов: Orderbook/Spread/Mark/Index/Last/AggTrades/Position/OpenOrders/**Account** |
 | M3: метрики (Counter/Add/Inc) — `okx_ws_*_total` | ✅ | — |
-| M5: contract-тесты на JSON-фикстурах OKX | ✅ | 11 кейсов в `swap/contract_test.go` |
+| M5: contract-тесты на JSON-фикстурах OKX | ✅ | 13 кейсов в `swap/contract_test.go` |
 | M6: примеры | ✅ | `examples/orderbook-watcher`, `examples/simple-trade` |
+| **A: Demo-mode** (`Config.Demo` → `x-simulated-trading: 1` + wspap WS) | ✅ | unit + интеграционный |
+| **A: Account.GetBalance** (`/api/v5/account/balance`) | ✅ | contract-тесты |
+| **A: Stream.WatchAccount** (private канал `account`) | ✅ | mock-WS integration |
 
 В v1 поддержан **только профиль SWAP** (USD-M Perpetual, `instType=SWAP`).
 Профиль SPOT — отдельная итерация.
@@ -61,7 +64,7 @@ Variant B из ТЗ §7: пользователю выдаётся «толст�
 профилю (`swap.Client`), у которого есть саб-клиенты:
 
 - `Trading()`    — Create/Modify/Cancel/Batch*/CancelAll/CancelForgotten.
-- `Account()`    — Positions/OpenOrders/ClosePosition/SetLeverage/SetPositionMode.
+- `Account()`    — **Balance**/Positions/OpenOrders/ClosePosition/SetLeverage/SetPositionMode.
 - `MarketData()` — SymbolInfo/OrderBook/HistoricalCandles.
 - `Stream()`     — Watch* (WebSocket; M3).
 
@@ -71,6 +74,29 @@ Variant B из ТЗ §7: пользователю выдаётся «толст�
 Ошибки SDK — единый тип `*okx.Error` с полем `Kind` (Network/RateLimit/Auth/
 InvalidRequest/Exchange/Unknown). Категория мапится из биржевого кода OKX
 (`MapOKXCode`) или HTTP-статуса (`MapHTTPStatus`).
+
+## Demo-режим (paper-trading)
+
+Для проверки интеграции без реальных средств включите `Config.Demo`:
+
+```go
+var cfg okx.Config = okx.DefaultConfig()
+cfg.Demo = true                    // ← всё, что нужно
+cfg.APIKey = "<DEMO_API_KEY>"      // создайте отдельно: Profile → Demo Trading → API
+cfg.SecretKey = "<DEMO_SECRET>"
+cfg.Passphrase = "<DEMO_PASSPHRASE>"
+```
+
+Что произойдёт автоматически:
+
+| Слой | Эффект |
+|---|---|
+| REST | ко всем запросам добавляется заголовок `x-simulated-trading: 1` (URL остаётся production — отличает только заголовок). |
+| WebSocket | `wss://ws.okx.com:8443/...` заменяется на `wss://wspap.okx.com:8443/...` для public/private/business endpoint'ов. Если вы явно задали `cfg.WS.PublicURL` / `PrivateURL`, SDK его НЕ трогает. |
+| Ключи | demo и prod ключи **не совместимы** — на бирже их выпускают отдельно. |
+
+Контракт API между demo и prod на стороне OKX одинаковый — поэтому весь код
+SDK работает без изменений; меняется только этот один флаг.
 
 ## Quickstart
 
@@ -133,6 +159,20 @@ func main() {
 }
 ```
 
+## Account snapshot (REST)
+
+```go
+var bal swaptypes.Balance
+bal, err = sw.Account().GetBalance(ctx)               // все валюты
+bal, err = sw.Account().GetBalance(ctx, "USDT", "BTC") // фильтр
+```
+
+Возвращает агрегированный `types.Balance` с top-level (TotalEquityUSD,
+AdjustedEquityUSD, MarginRatio, NotionalUSD и т.д.) и `Details []BalanceDetail`
+per-currency (Equity, AvailableEquity, FrozenBalance, UPL и т.п.). Тот же тип
+используется в `Stream().WatchAccount` — на старте делаешь REST-snapshot, далее
+живёшь на push'ах.
+
 ## Orderbook engine
 
 ```go
@@ -181,6 +221,7 @@ err := sw.Stream().WatchOrderbook(ctx, "BTC-USDT-SWAP", 5,
 | `WatchAggTrades` | `trades` | сделки целиком (price+size+side+ts) |
 | `WatchPosition` | `positions` (private) | обновления позиции |
 | `WatchOpenOrders` | `orders` (private) | обновления ордеров |
+| `WatchAccount` | `account` (private) | полный снимок баланса unified-account |
 
 Счётчики (через `okx.Config.Metrics`):
 

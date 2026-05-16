@@ -52,6 +52,9 @@ type Config struct {
 	MaxIdleConns        int
 	MaxIdleConnsPerHost int
 	IdleConnTimeout     time.Duration
+	// Demo — если true, на каждый запрос добавляется заголовок
+	// "x-simulated-trading: 1" — OKX переключает обработку в режим paper-trading.
+	Demo bool
 }
 
 // Options — параметры одного REST-запроса.
@@ -104,6 +107,7 @@ type Client struct {
 	baseURL    string
 	userAgent  string
 	logger     okxlog.Logger
+	demo       bool
 }
 
 // NewClient создаёт REST-клиент.
@@ -127,6 +131,7 @@ func NewClient(baseURL string, signer *auth.Signer, cfg Config, ua string, log o
 		baseURL:    strings.TrimRight(baseURL, "/"),
 		userAgent:  ua,
 		logger:     log,
+		demo:       cfg.Demo,
 	}
 }
 
@@ -258,6 +263,9 @@ func (c *Client) applyHeaders(req *http.Request, opts Options, body string) {
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", c.userAgent)
 	req.Header.Set("Accept", "application/json")
+	if c.demo {
+		req.Header.Set("x-simulated-trading", "1")
+	}
 
 	if !opts.Signed {
 		return

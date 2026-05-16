@@ -3,6 +3,7 @@
 
 ОПИСАНИЕ:
 Доменный саб-клиент аккаунта/позиций SWAP. Реализует:
+  - GetBalance                       : GET /api/v5/account/balance[?ccy=...]
   - GetPosition / GetSymbolPosition  : GET /api/v5/account/positions?instType=SWAP&instId=...
   - GetOpenOrders                    : GET /api/v5/trade/orders-pending?instType=SWAP&instId=...
   - ClosePosition                    : POST /api/v5/trade/close-position (market close)
@@ -23,6 +24,7 @@ package swap
 import (
 	"context"
 	"net/url"
+	"strings"
 
 	okx "github.com/tonymontanov/go-okx/v2"
 	"github.com/tonymontanov/go-okx/v2/internal/codec"
@@ -37,6 +39,112 @@ type AccountClient struct {
 
 func newAccountClient(c *Client) *AccountClient {
 	return &AccountClient{c: c}
+}
+
+// rawBalanceDetail — сырой формат per-currency элемента из /account/balance.
+type rawBalanceDetail struct {
+	Ccy       string `json:"ccy"`
+	Eq        string `json:"eq"`
+	CashBal   string `json:"cashBal"`
+	AvailEq   string `json:"availEq"`
+	AvailBal  string `json:"availBal"`
+	FrozenBal string `json:"frozenBal"`
+	OrdFrozen string `json:"ordFrozen"`
+	Upl       string `json:"upl"`
+	IsoUpl    string `json:"isoUpl"`
+	DisEq     string `json:"disEq"`
+	EqUsd     string `json:"eqUsd"`
+	MgnRatio  string `json:"mgnRatio"`
+	UTime     string `json:"uTime"`
+}
+
+// rawBalance — сырой формат top-level элемента из /account/balance.
+type rawBalance struct {
+	TotalEq     string             `json:"totalEq"`
+	AdjEq       string             `json:"adjEq"`
+	IsoEq       string             `json:"isoEq"`
+	OrdFroz     string             `json:"ordFroz"`
+	Imr         string             `json:"imr"`
+	Mmr         string             `json:"mmr"`
+	MgnRatio    string             `json:"mgnRatio"`
+	NotionalUsd string             `json:"notionalUsd"`
+	UTime       string             `json:"uTime"`
+	Details     []rawBalanceDetail `json:"details"`
+}
+
+/*
+GetBalance возвращает unified-account баланс. Если переданы валюты — фильтрует
+ответ OKX по ним (передаётся параметр ccy=BTC,USDT). Без аргументов вернутся
+все валюты, по которым у аккаунта есть какой-либо баланс/позиция.
+
+ENDPOINT: GET /api/v5/account/balance[?ccy=BTC,USDT]
+
+ВНИМАНИЕ:
+  - Эндпоинт возвращает массив из ровно одного элемента (по дизайну OKX).
+  - В Demo-режиме (Config.Demo=true) баланс возвращается из песочницы, а не
+    из реального портфеля.
+*/
+func (a *AccountClient) GetBalance(ctx context.Context, ccy ...string) (types.Balance, error) {
+	var q url.Values
+	if len(ccy) > 0 {
+		q = url.Values{}
+		q.Set("ccy", strings.Join(ccy, ","))
+	}
+
+	var resp rest.Response
+	var err error
+	resp, _, err = a.c.rest().Do(ctx, rest.Options{
+		Method: "GET",
+		Path:   "/api/v5/account/balance",
+		Query:  q,
+		Signed: true,
+	})
+	if err != nil {
+		return types.Balance{}, err
+	}
+
+	var raws []rawBalance
+	if err = resp.UnmarshalData(&raws); err != nil {
+		return types.Balance{}, okx.NewError(okx.ErrorKindUnknown, "", "account.GetBalance: parse", err)
+	}
+	if len(raws) == 0 {
+		return types.Balance{}, nil
+	}
+	return convertBalance(raws[0]), nil
+}
+
+func convertBalance(r rawBalance) types.Balance {
+	var out types.Balance
+	out.TotalEquityUSD, _ = codec.ParseDecimal(r.TotalEq)
+	out.AdjustedEquityUSD, _ = codec.ParseDecimal(r.AdjEq)
+	out.IsolatedEquityUSD, _ = codec.ParseDecimal(r.IsoEq)
+	out.OrderFrozenUSD, _ = codec.ParseDecimal(r.OrdFroz)
+	out.InitialMarginUSD, _ = codec.ParseDecimal(r.Imr)
+	out.MaintenanceMarginUSD, _ = codec.ParseDecimal(r.Mmr)
+	out.MarginRatio, _ = codec.ParseDecimal(r.MgnRatio)
+	out.NotionalUSD, _ = codec.ParseDecimal(r.NotionalUsd)
+	out.UpdatedAtMs, _ = codec.ParseInt64(r.UTime)
+
+	out.Details = make([]types.BalanceDetail, 0, len(r.Details))
+	var i int
+	for i = 0; i < len(r.Details); i++ {
+		var d rawBalanceDetail = r.Details[i]
+		var bd types.BalanceDetail = types.BalanceDetail{Ccy: d.Ccy}
+		bd.Equity, _ = codec.ParseDecimal(d.Eq)
+		bd.CashBalance, _ = codec.ParseDecimal(d.CashBal)
+		bd.AvailableEquity, _ = codec.ParseDecimal(d.AvailEq)
+		bd.AvailableBalance, _ = codec.ParseDecimal(d.AvailBal)
+		bd.FrozenBalance, _ = codec.ParseDecimal(d.FrozenBal)
+		bd.OrderFrozen, _ = codec.ParseDecimal(d.OrdFrozen)
+		bd.UnrealizedPnL, _ = codec.ParseDecimal(d.Upl)
+		bd.IsolatedUnrealizedPnL, _ = codec.ParseDecimal(d.IsoUpl)
+		bd.DiscountEquity, _ = codec.ParseDecimal(d.DisEq)
+		bd.EquityUSD, _ = codec.ParseDecimal(d.EqUsd)
+		bd.MarginRatio, _ = codec.ParseDecimal(d.MgnRatio)
+		bd.UpdatedAtMs, _ = codec.ParseInt64(d.UTime)
+		out.Details = append(out.Details, bd)
+	}
+	return out
 }
 
 // rawPositionEntry — сырой ответ /account/positions (только используемые поля).

@@ -212,6 +212,107 @@ func TestContract_GetHistoricalCandles_SubMinute(t *testing.T) {
 	}
 }
 
+func TestContract_GetBalance(t *testing.T) {
+	// Сокращённая, но реалистичная фикстура из OKX docs v5 (Get Balance).
+	var fixture string = `{
+		"code":"0","msg":"",
+		"data":[{
+			"uTime":"1614847029331",
+			"totalEq":"91884",
+			"isoEq":"0",
+			"adjEq":"91884",
+			"ordFroz":"0",
+			"imr":"0",
+			"mmr":"0",
+			"mgnRatio":"99999",
+			"notionalUsd":"0",
+			"details":[
+				{"ccy":"USDT","eq":"91884","cashBal":"91884","isoEq":"0","availEq":"91884",
+				 "disEq":"91884","availBal":"91884","frozenBal":"0","ordFrozen":"0",
+				 "upl":"0","isoUpl":"0","mgnRatio":"99999","eqUsd":"91884",
+				 "uTime":"1614847029331"},
+				{"ccy":"BTC","eq":"0.5","cashBal":"0.5","isoEq":"0","availEq":"0.5",
+				 "disEq":"22000","availBal":"0.5","frozenBal":"0","ordFrozen":"0",
+				 "upl":"0","isoUpl":"0","mgnRatio":"99999","eqUsd":"22000",
+				 "uTime":"1614847029331"}
+			]
+		}]
+	}`
+	var _, client = mockOKX(t, map[string]string{
+		"/api/v5/account/balance": fixture,
+	})
+	var bal types.Balance
+	var err error
+	bal, err = swapOf(client).Account().GetBalance(context.Background())
+	if err != nil {
+		t.Fatalf("GetBalance: %v", err)
+	}
+	if !bal.TotalEquityUSD.Equal(mustDec("91884")) {
+		t.Fatalf("TotalEquityUSD: got %v", bal.TotalEquityUSD)
+	}
+	if !bal.AdjustedEquityUSD.Equal(mustDec("91884")) {
+		t.Fatalf("AdjustedEquityUSD: got %v", bal.AdjustedEquityUSD)
+	}
+	if !bal.MarginRatio.Equal(mustDec("99999")) {
+		t.Fatalf("MarginRatio: got %v", bal.MarginRatio)
+	}
+	if bal.UpdatedAtMs != 1614847029331 {
+		t.Fatalf("UpdatedAtMs: got %d", bal.UpdatedAtMs)
+	}
+	if len(bal.Details) != 2 {
+		t.Fatalf("details: got %d", len(bal.Details))
+	}
+	// проверим, что per-currency маппинг работает корректно
+	var usdt *types.BalanceDetail
+	var i int
+	for i = 0; i < len(bal.Details); i++ {
+		if bal.Details[i].Ccy == "USDT" {
+			usdt = &bal.Details[i]
+			break
+		}
+	}
+	if usdt == nil {
+		t.Fatal("USDT detail missing")
+	}
+	if !usdt.AvailableEquity.Equal(mustDec("91884")) {
+		t.Fatalf("USDT.AvailableEquity: got %v", usdt.AvailableEquity)
+	}
+	if !usdt.EquityUSD.Equal(mustDec("91884")) {
+		t.Fatalf("USDT.EquityUSD: got %v", usdt.EquityUSD)
+	}
+}
+
+func TestContract_GetBalance_FilteredCcy(t *testing.T) {
+	// Проверяем, что параметр ccy=BTC,USDT уходит в query.
+	var seen string
+	var srv *httptest.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seen = r.URL.Query().Get("ccy")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"code":"0","msg":"","data":[{"totalEq":"0","details":[]}]}`)
+	}))
+	t.Cleanup(srv.Close)
+
+	var cfg okx.Config = okx.DefaultConfig()
+	cfg.REST.BaseURL = srv.URL
+	cfg.APIKey, cfg.SecretKey, cfg.Passphrase = "k", "s", "p"
+	cfg.REST.RequestTimeout = 2 * time.Second
+	var client *okx.Client
+	var err error
+	client, err = okx.NewClient(cfg)
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	defer client.Close()
+
+	_, err = swapOf(client).Account().GetBalance(context.Background(), "BTC", "USDT")
+	if err != nil {
+		t.Fatalf("GetBalance: %v", err)
+	}
+	if seen != "BTC,USDT" {
+		t.Fatalf("ccy query: got %q, want %q", seen, "BTC,USDT")
+	}
+}
+
 func TestContract_GetPositions(t *testing.T) {
 	var fixture string = `{
 		"code":"0","msg":"",
