@@ -62,6 +62,7 @@ func NewClient(cfg Config) (*Client, error) {
 		MaxIdleConnsPerHost: cfg.REST.MaxIdleConnsPerHost,
 		IdleConnTimeout:     cfg.REST.IdleConnTimeout,
 		Demo:                cfg.Demo,
+		RateLimitObserver:   cfg.RateLimitObserver,
 	}
 	var restClient *rest.Client = rest.NewClient(cfg.REST.BaseURL, signer, restCfg, cfg.UserAgent, cfg.Logger)
 

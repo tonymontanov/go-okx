@@ -90,6 +90,31 @@ type Config struct {
 	// UserAgent — значение User-Agent для REST-запросов. Если пусто — "go-okx/v2".
 	UserAgent string
 
+	// RateLimitObserver — опциональный hook, который SDK вызывает СИНХРОННО
+	// после каждого REST-ответа (успешного или с ошибкой OKX) с заголовками
+	// rate-limit'а, которые OKX вернул для конкретного endpoint'а:
+	//   ratelimit-limit / ratelimit-remaining / ratelimit-reset
+	//   x-ratelimit-limit / x-ratelimit-remaining / x-ratelimit-reset
+	//
+	// Аргументы:
+	//   - endpoint: путь запроса (например, "/api/v5/trade/batch-orders").
+	//     OKX-лимиты per-endpoint, поэтому подписчику нужна именно эта гранулярность.
+	//   - headers:  фактически отданные сервером заголовки. Может быть пустой
+	//     map, если конкретный endpoint не возвращает rate-limit info, но всегда
+	//     non-nil.
+	//
+	// Observer НЕ вызывается на офлайн-ошибках (timeout / network reset, до
+	// прихода HTTP-ответа), потому что таких ситуаций нет новой rate-limit
+	// информации. Вызывается на любом полученном ответе, включая 4xx/5xx.
+	//
+	// Контракт скорости: observer вызывается в горутине, выполнившей REST-вызов,
+	// и блокирует возврат из Client.Do до его завершения. Реализация должна быть
+	// O(1) — типично неблокирующая отправка в буферизованный канал. Любая
+	// блокировка/паника тормозит весь REST-pipeline вызывающего.
+	//
+	// Если nil — no-op, zero overhead. Эта совместимость v2.x гарантируется.
+	RateLimitObserver func(endpoint string, headers map[string]string)
+
 	// Demo — переводит клиент в режим OKX Demo Trading (paper-trading).
 	// Эффект:
 	//   - REST: ко всем запросам добавляется заголовок "x-simulated-trading: 1".

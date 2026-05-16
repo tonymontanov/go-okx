@@ -55,6 +55,11 @@ type Config struct {
 	// Demo — если true, на каждый запрос добавляется заголовок
 	// "x-simulated-trading: 1" — OKX переключает обработку в режим paper-trading.
 	Demo bool
+	// RateLimitObserver — опциональный callback, вызывается СИНХРОННО после
+	// получения HTTP-ответа (и до парсинга тела) с собранными rate-limit
+	// заголовками. nil → no-op. Подробный контракт — см. okx.Config в корневом
+	// пакете (там это поле публикуется конечному пользователю SDK).
+	RateLimitObserver func(endpoint string, headers map[string]string)
 }
 
 // Options — параметры одного REST-запроса.
@@ -102,12 +107,13 @@ func (r Response) UnmarshalData(dest any) error {
 
 // Client — низкоуровневый REST-клиент.
 type Client struct {
-	httpClient *http.Client
-	signer     *auth.Signer
-	baseURL    string
-	userAgent  string
-	logger     okxlog.Logger
-	demo       bool
+	httpClient        *http.Client
+	signer            *auth.Signer
+	baseURL           string
+	userAgent         string
+	logger            okxlog.Logger
+	demo              bool
+	rateLimitObserver func(endpoint string, headers map[string]string)
 }
 
 // NewClient создаёт REST-клиент.
@@ -126,12 +132,13 @@ func NewClient(baseURL string, signer *auth.Signer, cfg Config, ua string, log o
 		Transport: transport,
 	}
 	return &Client{
-		httpClient: httpClient,
-		signer:     signer,
-		baseURL:    strings.TrimRight(baseURL, "/"),
-		userAgent:  ua,
-		logger:     log,
-		demo:       cfg.Demo,
+		httpClient:        httpClient,
+		signer:            signer,
+		baseURL:           strings.TrimRight(baseURL, "/"),
+		userAgent:         ua,
+		logger:            log,
+		demo:              cfg.Demo,
+		rateLimitObserver: cfg.RateLimitObserver,
 	}
 }
 
@@ -180,6 +187,17 @@ func (c *Client) Do(ctx context.Context, opts Options) (Response, map[string]str
 	}()
 
 	rateLimits = collectRateLimitHeaders(httpResp.Header)
+	// Уведомляем observer'а ДО парсинга тела: даже если ответ невалидный JSON
+	// или содержит OKX-ошибку, rate-limit headers всё равно полезны для
+	// внешнего rate-limiter'а (например, чтобы он не блокировал retry).
+	// Гарантия non-nil map в observer — упрощает подписчика (см. okx.Config).
+	if c.rateLimitObserver != nil {
+		var hdrs map[string]string = rateLimits
+		if hdrs == nil {
+			hdrs = map[string]string{}
+		}
+		c.rateLimitObserver(opts.Path, hdrs)
+	}
 
 	var raw []byte
 	raw, err = io.ReadAll(httpResp.Body)
