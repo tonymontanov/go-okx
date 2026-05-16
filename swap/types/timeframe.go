@@ -2,47 +2,38 @@
 ФАЙЛ: swap/types/timeframe.go
 
 ОПИСАНИЕ:
-Таймфрейм исторических свечей, согласован с core/types.Timeframe. Маппинг
-SDK → строка OKX:
-  1s/15s/30s   → REST не поддерживает; возвращается ошибка вызывающим кодом
-                  (см. ответы на ТЗ — sub-minute агрегируется наверху).
-  1m, 3m, 5m, 15m, 30m → "1m"/"3m"/"5m"/"15m"/"30m"
-  1h, 2h, 4h           → "1H"/"2H"/"4H"
-  6h, 8h, 12h          → "6H"/"8H"/"12H"   (Hong Kong time у OKX по умолчанию;
-                          для UTC использовать "6Hutc" — это уже задача
-                          GetHistoricalCandles, не enum'а).
-  1d                   → "1D"
-  1w                   → "1W"
-  1mo                  → "1M"
-
-Маппинг живёт в swap/client.timeframeToOKX, чтобы enum оставался "чистым".
+Таймфрейм исторических свечей для SWAP-профиля. С момента выделения общего
+слоя — type-alias на commontypes.Timeframe + реэкспорт констант.
+Документация — в types/timeframe.go.
 */
 
 package types
 
-// Timeframe — таймфрейм свечи.
-type Timeframe string
+import commontypes "github.com/tonymontanov/go-okx/v2/types"
+
+// Timeframe — таймфрейм свечи. См. commontypes.Timeframe.
+type Timeframe = commontypes.Timeframe
 
 const (
 	// Sub-minute — поддерживается только агрегацией наверху, REST вернёт ошибку.
-	Timeframe1s  Timeframe = "1s"
-	Timeframe15s Timeframe = "15s"
-	Timeframe30s Timeframe = "30s"
+	Timeframe1s  = commontypes.Timeframe1s
+	Timeframe15s = commontypes.Timeframe15s
+	Timeframe30s = commontypes.Timeframe30s
 
-	Timeframe1m  Timeframe = "1m"
-	Timeframe3m  Timeframe = "3m"
-	Timeframe5m  Timeframe = "5m"
-	Timeframe15m Timeframe = "15m"
-	Timeframe30m Timeframe = "30m"
+	Timeframe1m  = commontypes.Timeframe1m
+	Timeframe3m  = commontypes.Timeframe3m
+	Timeframe5m  = commontypes.Timeframe5m
+	Timeframe15m = commontypes.Timeframe15m
+	Timeframe30m = commontypes.Timeframe30m
 
-	Timeframe1h  Timeframe = "1h"
-	Timeframe2h  Timeframe = "2h"
-	Timeframe4h  Timeframe = "4h"
-	Timeframe6h  Timeframe = "6h"
-	Timeframe8h  Timeframe = "8h"
-	Timeframe12h Timeframe = "12h"
+	Timeframe1h  = commontypes.Timeframe1h
+	Timeframe2h  = commontypes.Timeframe2h
+	Timeframe4h  = commontypes.Timeframe4h
+	Timeframe6h  = commontypes.Timeframe6h
+	Timeframe8h  = commontypes.Timeframe8h
+	Timeframe12h = commontypes.Timeframe12h
 
-	Timeframe1D  Timeframe = "1d"
-	Timeframe1W  Timeframe = "1w"
-	Timeframe1Mo Timeframe = "1mo"
+	Timeframe1D  = commontypes.Timeframe1D
+	Timeframe1W  = commontypes.Timeframe1W
+	Timeframe1Mo = commontypes.Timeframe1Mo
 )

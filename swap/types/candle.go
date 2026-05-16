@@ -2,37 +2,18 @@
 ФАЙЛ: swap/types/candle.go
 
 ОПИСАНИЕ:
-Структуры исторической свечи. Маппятся из массива чисел/строк ответа
-`GET /api/v5/market/candles` и `history-candles`.
+Структуры исторической свечи SWAP-профиля. С момента выделения общего слоя
+— type-alias на commontypes.Candle/Candles. Документация — в types/candle.go.
 
-Формат ответа OKX (массив строк по позициям):
-  [ ts, o, h, l, c, vol, volCcy, volCcyQuote, confirm ]
-
-Где confirm — флаг закрытия свечи ("0" — текущая, "1" — закрытая).
-
-ПОЛЯ Candle:
-  - OpenTimeMs  — таймштамп открытия свечи (мс).
-  - Open/High/Low/Close — OHLC цены.
-  - Volume      — объём в базовой валюте (base contract amount).
-  - VolumeQuote — объём в котировочной валюте.
-  - Closed      — true, если свеча уже закрыта (confirm == 1).
+ЕДИНИЦА Volume для SWAP — контракты (умножать на ctVal для приведения в base).
 */
 
 package types
 
-import "github.com/shopspring/decimal"
+import commontypes "github.com/tonymontanov/go-okx/v2/types"
 
-// Candle — одна свеча.
-type Candle struct {
-	OpenTimeMs  int64
-	Open        decimal.Decimal
-	High        decimal.Decimal
-	Low         decimal.Decimal
-	Close       decimal.Decimal
-	Volume      decimal.Decimal
-	VolumeQuote decimal.Decimal
-	Closed      bool
-}
+// Candle — одна свеча. См. commontypes.Candle.
+type Candle = commontypes.Candle
 
-// Candles — слайс свечей.
-type Candles []Candle
+// Candles — слайс свечей. См. commontypes.Candles.
+type Candles = commontypes.Candles

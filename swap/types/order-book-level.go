@@ -2,28 +2,19 @@
 ФАЙЛ: swap/types/order-book-level.go
 
 ОПИСАНИЕ:
-Уровень стакана (одна точка глубины: цена + объём). Используется в:
-  - REST snapshot (GetOrderBook);
-  - orderbook engine (snapshot + delta);
-  - WS push (Watch* функции).
+Уровень стакана для SWAP-профиля. С момента выделения общего слоя
+github.com/tonymontanov/go-okx/v2/types — это type-alias на
+commontypes.OrderBookLevel (формат идентичен для spot и swap).
 
-ПОЛЯ:
-  - Price — цена уровня. decimal.Decimal — без потерь и сравним без epsilon-trick.
-  - Size  — объём в контрактах на этом уровне. decimal.Decimal по той же причине.
+Полная документация — в types/order-book-level.go.
 
-ПРИМЕЧАНИЕ:
-Поле `Orders` (число ордеров на уровне), которое OKX отдаёт в массиве, мы
-сознательно ОПУСКАЕМ в публичной структуре — оно почти никем не используется
-в реальной торговле, но удваивает размер структуры. При необходимости вернётся
-отдельным расширенным типом OrderBookLevelDetailed.
+ЕДИНИЦА Size: для SWAP — контракты OKX (умножать на ctVal для приведения
+в base). Эта семантика на уровне адаптера/коннектора, не структуры.
 */
 
 package types
 
-import "github.com/shopspring/decimal"
+import commontypes "github.com/tonymontanov/go-okx/v2/types"
 
-// OrderBookLevel — один уровень стакана.
-type OrderBookLevel struct {
-	Price decimal.Decimal
-	Size  decimal.Decimal
-}
+// OrderBookLevel — один уровень стакана. См. commontypes.OrderBookLevel.
+type OrderBookLevel = commontypes.OrderBookLevel

@@ -2,41 +2,42 @@
 ФАЙЛ: swap/types/enums.go
 
 ОПИСАНИЕ:
-Перечисления (enum-ы) для SWAP-профиля OKX. Все значения — string-typed enum'ы,
-точно совпадающие с протоколом OKX v5 (https://www.okx.com/docs-v5/en/).
-Это позволяет:
-  - сразу сериализовать/десериализовать без маппинга;
-  - использовать enum'ы напрямую в URL/JSON;
-  - сделать значения сравнимыми через `==` без аллокаций.
+Enum'ы SWAP-профиля OKX. Большая часть значений общая с остальными
+профилями (spot и т. д.) — реэкспортируется через алиасы из пакета
+github.com/tonymontanov/go-okx/v2/types (см. types/enums.go).
 
-ТИПЫ:
-  - SideType        — buy/sell (направление ордера).
-  - PosSide         — long/short/net (сторона позиции; для SWAP в hedge-режиме).
-  - OrderType       — market/limit/post_only/fok/ioc/optimal_limit_ioc.
-  - TimeInForceType — GTC/IOC/FOK/PostOnly (как в core/types/enums.go, для маппинга
-    "сверху"). В сам REST OKX не отправляется — конвертируется в OrderType.
-  - TdMode          — cross/isolated/cash (margin mode). Для SWAP допустимы только
-    cross / isolated; cash — для SPOT-профиля. Хранится здесь, потому что SDK
-    может выставлять tdMode по умолчанию для всего SWAP-клиента.
-  - InstType        — SWAP/SPOT/FUTURES/OPTIONS. SWAP-профиль всегда отдаёт SWAP.
-  - OrderState      — минимальный enum статуса ордера для совместимости с
-    деском (см. ТЗ §5.4 и ответы на ТЗ).
+Здесь живут ТОЛЬКО enum'ы и константы, специфичные для SWAP:
+  - PosSide        — long/short/net (стороны позиции в hedge-режиме).
+  - PositionMode   — net_mode/long_short_mode (режим аккаунта).
+  - OrderTypeOptimalLimitIOC — swap-only константа над общим OrderType
+                               (используется ClosePosition по рынку).
+
+BACKWARDS COMPATIBILITY:
+Все ранее доступные через swap/types типы продолжают работать без изменений
+на стороне пользователя. type-alias `type X = types.X` на уровне Go
+эквивалентен исходному типу — нет necessary приведений или импортов.
 */
 
 package types
 
-// SideType — направление ордера.
-type SideType string
+import (
+	commontypes "github.com/tonymontanov/go-okx/v2/types"
+)
+
+// SideType — направление ордера. См. commontypes.SideType.
+type SideType = commontypes.SideType
 
 const (
 	// SideTypeBuy — покупка.
-	SideTypeBuy SideType = "buy"
+	SideTypeBuy = commontypes.SideTypeBuy
 	// SideTypeSell — продажа.
-	SideTypeSell SideType = "sell"
+	SideTypeSell = commontypes.SideTypeSell
 )
 
 // PosSide — сторона позиции в SWAP. Используется в hedge-режиме (long_short_mode).
 // В net_mode (по умолчанию для SDK) всегда передаётся "net".
+//
+// SWAP-ONLY: на cash spot позиций нет, в spot/types этого типа нет.
 type PosSide string
 
 const (
@@ -48,68 +49,72 @@ const (
 	PosSideNet PosSide = "net"
 )
 
-// OrderType — тип ордера в нотации OKX. POST_ONLY / FOK / IOC у OKX выражены
-// отдельным OrderType, а не через TIF — это особенность их REST-протокола.
-type OrderType string
+// OrderType — тип ордера в нотации OKX. См. commontypes.OrderType.
+type OrderType = commontypes.OrderType
 
 const (
 	// OrderTypeMarket — рыночный ордер.
-	OrderTypeMarket OrderType = "market"
+	OrderTypeMarket = commontypes.OrderTypeMarket
 	// OrderTypeLimit — лимитный (GTC).
-	OrderTypeLimit OrderType = "limit"
+	OrderTypeLimit = commontypes.OrderTypeLimit
 	// OrderTypePostOnly — лимитный post-only (аналог TIF=GTX у Binance).
-	OrderTypePostOnly OrderType = "post_only"
+	OrderTypePostOnly = commontypes.OrderTypePostOnly
 	// OrderTypeFOK — fill-or-kill.
-	OrderTypeFOK OrderType = "fok"
+	OrderTypeFOK = commontypes.OrderTypeFOK
 	// OrderTypeIOC — immediate-or-cancel.
-	OrderTypeIOC OrderType = "ioc"
-	// OrderTypeOptimalLimitIOC — market-ордер для SWAP, исполняется по best
-	// price + IOC. Используется в ClosePosition по рынку.
+	OrderTypeIOC = commontypes.OrderTypeIOC
+	// OrderTypeOptimalLimitIOC — SWAP-only market-ордер (исполняется по best
+	// price + IOC, используется ClosePosition по рынку). На SPOT OKX вернёт
+	// ошибку, поэтому константа живёт здесь, а не в общем пакете.
 	OrderTypeOptimalLimitIOC OrderType = "optimal_limit_ioc"
 )
 
-// TimeInForceType — TIF в нотации core/types (Binance-style). Для отправки в
-// OKX он маппится в соответствующий OrderType (см. OrderTypeFromTIF в client).
-type TimeInForceType string
+// TimeInForceType — TIF в нотации core/types (Binance-style). См. commontypes.
+type TimeInForceType = commontypes.TimeInForceType
 
 const (
 	// TimeInForceTypeGTC — Good Till Cancel (лимит).
-	TimeInForceTypeGTC TimeInForceType = "GTC"
+	TimeInForceTypeGTC = commontypes.TimeInForceTypeGTC
 	// TimeInForceTypeIOC — Immediate or Cancel.
-	TimeInForceTypeIOC TimeInForceType = "IOC"
+	TimeInForceTypeIOC = commontypes.TimeInForceTypeIOC
 	// TimeInForceTypeFOK — Fill or Kill.
-	TimeInForceTypeFOK TimeInForceType = "FOK"
+	TimeInForceTypeFOK = commontypes.TimeInForceTypeFOK
 	// TimeInForceTypeGTX — Post Only.
-	TimeInForceTypeGTX TimeInForceType = "GTX"
+	TimeInForceTypeGTX = commontypes.TimeInForceTypeGTX
 )
 
-// TdMode — margin-mode ордера/позиции в OKX.
-type TdMode string
+// TdMode — margin-mode ордера/позиции в OKX. См. commontypes.TdMode.
+type TdMode = commontypes.TdMode
 
 const (
 	// TdModeCross — cross-margin (USD-M SWAP по умолчанию).
-	TdModeCross TdMode = "cross"
+	TdModeCross = commontypes.TdModeCross
 	// TdModeIsolated — isolated margin.
-	TdModeIsolated TdMode = "isolated"
-	// TdModeCash — для SPOT-профиля; в SWAP не используется.
-	TdModeCash TdMode = "cash"
+	TdModeIsolated = commontypes.TdModeIsolated
+	// TdModeCash — для SPOT-профиля; в SWAP не используется, но константа
+	// доступна для случаев, когда swap-код передаёт значение, полученное
+	// из общего слоя.
+	TdModeCash = commontypes.TdModeCash
 )
 
 // InstType — тип инструмента OKX. SWAP-профиль всегда отдаёт InstTypeSWAP.
-type InstType string
+// См. commontypes.InstType.
+type InstType = commontypes.InstType
 
 const (
 	// InstTypeSpot — спотовый инструмент.
-	InstTypeSpot InstType = "SPOT"
+	InstTypeSpot = commontypes.InstTypeSpot
 	// InstTypeSWAP — USD-M Perpetual SWAP.
-	InstTypeSWAP InstType = "SWAP"
+	InstTypeSWAP = commontypes.InstTypeSWAP
 	// InstTypeFutures — фьючерс с экспирацией.
-	InstTypeFutures InstType = "FUTURES"
+	InstTypeFutures = commontypes.InstTypeFutures
 	// InstTypeOption — опцион.
-	InstTypeOption InstType = "OPTION"
+	InstTypeOption = commontypes.InstTypeOption
 )
 
 // PositionMode — режим позиций аккаунта (см. SetPositionMode).
+//
+// SWAP-ONLY: cash spot не имеет понятия позиции, режим там не настраивается.
 type PositionMode string
 
 const (
@@ -119,38 +124,22 @@ const (
 	PositionModeLongShort PositionMode = "long_short_mode"
 )
 
-// OrderState — минимальный enum статуса ордера. Введён как компромисс между
-// ТЗ §5.4 («не вводить общую модель статусов») и реальной потребностью деска
-// фильтровать live/filled/canceled (см. ответы на ТЗ).
-type OrderState string
+// OrderState — минимальный enum статуса ордера. См. commontypes.OrderState.
+type OrderState = commontypes.OrderState
 
 const (
 	// OrderStateLive — активен, ожидает исполнения.
-	OrderStateLive OrderState = "live"
+	OrderStateLive = commontypes.OrderStateLive
 	// OrderStatePartiallyFilled — частично исполнен, остаток активен.
-	OrderStatePartiallyFilled OrderState = "partially_filled"
+	OrderStatePartiallyFilled = commontypes.OrderStatePartiallyFilled
 	// OrderStateFilled — полностью исполнен.
-	OrderStateFilled OrderState = "filled"
+	OrderStateFilled = commontypes.OrderStateFilled
 	// OrderStateCanceled — отменён.
-	OrderStateCanceled OrderState = "canceled"
+	OrderStateCanceled = commontypes.OrderStateCanceled
 	// OrderStateUnknown — не удалось распарсить статус (защитный fallback).
-	OrderStateUnknown OrderState = "unknown"
+	OrderStateUnknown = commontypes.OrderStateUnknown
 )
 
-// ParseOrderState парсит строковый статус ордера OKX в типизированный enum.
-// OKX возможные значения: live, partially_filled, filled, canceled, mmp_canceled.
-// Всё неизвестное → OrderStateUnknown (диагностика — через лог вызывающим кодом).
-func ParseOrderState(s string) OrderState {
-	switch s {
-	case "live":
-		return OrderStateLive
-	case "partially_filled":
-		return OrderStatePartiallyFilled
-	case "filled":
-		return OrderStateFilled
-	case "canceled", "mmp_canceled":
-		return OrderStateCanceled
-	default:
-		return OrderStateUnknown
-	}
-}
+// ParseOrderState — реэкспорт функции из общего пакета. Вызывать как
+// swaptypes.ParseOrderState(s) — поведение не изменилось.
+var ParseOrderState = commontypes.ParseOrderState

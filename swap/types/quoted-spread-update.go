@@ -2,28 +2,13 @@
 ФАЙЛ: swap/types/quoted-spread-update.go
 
 ОПИСАНИЕ:
-Обновление best bid/ask (спред). Подаётся в callback подписки WatchSpread.
-Совпадает по смыслу с core/types.QuotedSpreadUpdate.
-
-ПОЛЯ:
-  - InstID    — инструмент.
-  - BestBid   — лучшая цена покупки.
-  - BestBidSz — объём на лучшем биде.
-  - BestAsk   — лучшая цена продажи.
-  - BestAskSz — объём на лучшем аске.
-  - Ts        — таймштамп OKX (мс).
+Обновление best bid/ask для SWAP. С момента выделения общего слоя — type-alias
+на commontypes.QuotedSpreadUpdate. Документация — в types/quoted-spread-update.go.
 */
 
 package types
 
-import "github.com/shopspring/decimal"
+import commontypes "github.com/tonymontanov/go-okx/v2/types"
 
-// QuotedSpreadUpdate — обновление best bid/ask.
-type QuotedSpreadUpdate struct {
-	InstID    string
-	BestBid   decimal.Decimal
-	BestBidSz decimal.Decimal
-	BestAsk   decimal.Decimal
-	BestAskSz decimal.Decimal
-	Ts        int64
-}
+// QuotedSpreadUpdate — обновление best bid/ask. См. commontypes.QuotedSpreadUpdate.
+type QuotedSpreadUpdate = commontypes.QuotedSpreadUpdate
