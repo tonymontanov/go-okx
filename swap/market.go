@@ -78,6 +78,10 @@ func (m *MarketDataClient) GetSymbolInfo(ctx context.Context, instID string) (ty
 		Path:   "/api/v5/public/instruments",
 		Query:  q,
 		Signed: false,
+		Meta: rest.RequestMeta{
+			Symbols:  []string{instID},
+			Category: string(okx.RateLimitCategoryMarketData),
+		},
 	})
 	if err != nil {
 		return info, err
@@ -165,6 +169,10 @@ func (m *MarketDataClient) GetOrderBook(ctx context.Context, instID string, dept
 		Path:   "/api/v5/market/books",
 		Query:  q,
 		Signed: false,
+		Meta: rest.RequestMeta{
+			Symbols:  []string{instID},
+			Category: string(okx.RateLimitCategoryMarketData),
+		},
 	})
 	if err != nil {
 		return snap, err
@@ -246,6 +254,10 @@ func (m *MarketDataClient) GetHistoricalCandles(
 		Path:   "/api/v5/market/history-candles",
 		Query:  q,
 		Signed: false,
+		Meta: rest.RequestMeta{
+			Symbols:  []string{instID},
+			Category: string(okx.RateLimitCategoryMarketData),
+		},
 	})
 	if err != nil {
 		return nil, err

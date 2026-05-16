@@ -41,6 +41,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"sort"
 	"sync"
 	"time"
 
@@ -51,6 +52,84 @@ import (
 
 // MaxBatchSize — лимит OKX на batch trade endpoint'ы.
 const MaxBatchSize = 20
+
+// uniqSortedInstIDsCreate — отсортированный уникальный set InstID из батча
+// CreateOrderRequest. Заполняем RequestMeta.Symbols для observer'а: внешнему
+// rate-limiter'у важно знать каким именно символам списать usage из бюджета
+// per (UID + InstId), а не блочить все символы из-за общего endpoint-счётчика.
+func uniqSortedInstIDsCreate(chunk []types.CreateOrderRequest) []string {
+	if len(chunk) == 0 {
+		return nil
+	}
+	var set map[string]struct{} = make(map[string]struct{}, len(chunk))
+	var i int
+	for i = 0; i < len(chunk); i++ {
+		if chunk[i].InstID == "" {
+			continue
+		}
+		set[chunk[i].InstID] = struct{}{}
+	}
+	if len(set) == 0 {
+		return nil
+	}
+	var out []string = make([]string, 0, len(set))
+	var s string
+	for s = range set {
+		out = append(out, s)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// uniqSortedInstIDsModify — то же для ModifyOrderRequest.
+func uniqSortedInstIDsModify(chunk []types.ModifyOrderRequest) []string {
+	if len(chunk) == 0 {
+		return nil
+	}
+	var set map[string]struct{} = make(map[string]struct{}, len(chunk))
+	var i int
+	for i = 0; i < len(chunk); i++ {
+		if chunk[i].InstID == "" {
+			continue
+		}
+		set[chunk[i].InstID] = struct{}{}
+	}
+	if len(set) == 0 {
+		return nil
+	}
+	var out []string = make([]string, 0, len(set))
+	var s string
+	for s = range set {
+		out = append(out, s)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// uniqSortedInstIDsCancel — то же для CancelOrderRequest.
+func uniqSortedInstIDsCancel(chunk []types.CancelOrderRequest) []string {
+	if len(chunk) == 0 {
+		return nil
+	}
+	var set map[string]struct{} = make(map[string]struct{}, len(chunk))
+	var i int
+	for i = 0; i < len(chunk); i++ {
+		if chunk[i].InstID == "" {
+			continue
+		}
+		set[chunk[i].InstID] = struct{}{}
+	}
+	if len(set) == 0 {
+		return nil
+	}
+	var out []string = make([]string, 0, len(set))
+	var s string
+	for s = range set {
+		out = append(out, s)
+	}
+	sort.Strings(out)
+	return out
+}
 
 // clOrdIDPattern — допустимые символы и длина clOrdId (см. OKX docs).
 // OKX требует case-sensitive alphanumerics, БЕЗ подчёркиваний и других символов;
@@ -107,6 +186,11 @@ func (t *TradingClient) CreateOrder(ctx context.Context, req types.CreateOrderRe
 		Path:   "/api/v5/trade/order",
 		Body:   body,
 		Signed: true,
+		Meta: rest.RequestMeta{
+			OrderCount: 1,
+			Symbols:    []string{req.InstID},
+			Category:   string(okx.RateLimitCategoryPlace),
+		},
 	})
 	if err != nil {
 		return info, err
@@ -279,6 +363,11 @@ func (t *TradingClient) ModifyOrder(ctx context.Context, req types.ModifyOrderRe
 		Path:   "/api/v5/trade/amend-order",
 		Body:   body,
 		Signed: true,
+		Meta: rest.RequestMeta{
+			OrderCount: 1,
+			Symbols:    []string{req.InstID},
+			Category:   string(okx.RateLimitCategoryAmend),
+		},
 	})
 	if err != nil {
 		return info, err
@@ -339,6 +428,11 @@ func (t *TradingClient) CancelOrder(ctx context.Context, req types.CancelOrderRe
 		Path:   "/api/v5/trade/cancel-order",
 		Body:   body,
 		Signed: true,
+		Meta: rest.RequestMeta{
+			OrderCount: 1,
+			Symbols:    []string{req.InstID},
+			Category:   string(okx.RateLimitCategoryCancel),
+		},
 	})
 	if err != nil {
 		return err
@@ -430,6 +524,14 @@ func (t *TradingClient) createBatchChunk(ctx context.Context, chunk []types.Crea
 		Path:   "/api/v5/trade/batch-orders",
 		Body:   bodies,
 		Signed: true,
+		Meta: rest.RequestMeta{
+			// OrderCount = реально отправленных в OKX (без invalid'ов,
+			// которые мы отфильтровали в bodyErrs). Это списываем из
+			// бюджета "300 orders per 2s" / "1000 new+amend / 2s".
+			OrderCount: len(bodies),
+			Symbols:    uniqSortedInstIDsCreate(chunk),
+			Category:   string(okx.RateLimitCategoryPlace),
+		},
 	})
 	if err != nil {
 		return placeholderInfos(chunk), err
@@ -578,6 +680,11 @@ func (t *TradingClient) modifyBatchChunk(ctx context.Context, chunk []types.Modi
 		Path:   "/api/v5/trade/amend-batch-orders",
 		Body:   bodies,
 		Signed: true,
+		Meta: rest.RequestMeta{
+			OrderCount: len(bodies),
+			Symbols:    uniqSortedInstIDsModify(chunk),
+			Category:   string(okx.RateLimitCategoryAmend),
+		},
 	})
 	if err != nil {
 		return nil, err
@@ -683,6 +790,11 @@ func (t *TradingClient) cancelBatchChunk(ctx context.Context, chunk []types.Canc
 		Path:   "/api/v5/trade/cancel-batch-orders",
 		Body:   bodies,
 		Signed: true,
+		Meta: rest.RequestMeta{
+			OrderCount: len(bodies),
+			Symbols:    uniqSortedInstIDsCancel(chunk),
+			Category:   string(okx.RateLimitCategoryCancel),
+		},
 	})
 	if err != nil {
 		return err

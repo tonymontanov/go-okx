@@ -98,6 +98,10 @@ func (a *AccountClient) GetBalance(ctx context.Context, ccy ...string) (types.Ba
 		Path:   "/api/v5/account/balance",
 		Query:  q,
 		Signed: true,
+		Meta: rest.RequestMeta{
+			Category: string(okx.RateLimitCategoryQuery),
+			// Symbols пустой: balance не per-instrument.
+		},
 	})
 	if err != nil {
 		return types.Balance{}, err
@@ -178,6 +182,10 @@ func (a *AccountClient) GetPositions(ctx context.Context, instID string) ([]type
 		Path:   "/api/v5/account/positions",
 		Query:  q,
 		Signed: true,
+		Meta: rest.RequestMeta{
+			Symbols:  []string{instID},
+			Category: string(okx.RateLimitCategoryQuery),
+		},
 	})
 	if err != nil {
 		return nil, err
@@ -264,6 +272,10 @@ func (a *AccountClient) GetOpenOrders(ctx context.Context, instID string) ([]typ
 		Path:   "/api/v5/trade/orders-pending",
 		Query:  q,
 		Signed: true,
+		Meta: rest.RequestMeta{
+			Symbols:  []string{instID},
+			Category: string(okx.RateLimitCategoryQuery),
+		},
 	})
 	if err != nil {
 		return nil, err
@@ -325,6 +337,14 @@ func (a *AccountClient) ClosePosition(ctx context.Context, instID string) error 
 		Path:   "/api/v5/trade/close-position",
 		Body:   body,
 		Signed: true,
+		Meta: rest.RequestMeta{
+			// close-position шлёт market-order под капотом — учитываем
+			// как Place (списываем из sub-account 1000/2s бюджета и из
+			// per-symbol budget). OrderCount=1 потому что один market-close.
+			OrderCount: 1,
+			Symbols:    []string{instID},
+			Category:   string(okx.RateLimitCategoryPlace),
+		},
 	})
 	if err != nil {
 		return err
@@ -358,6 +378,10 @@ func (a *AccountClient) SetLeverage(ctx context.Context, instID string, leverage
 		Path:   "/api/v5/account/set-leverage",
 		Body:   body,
 		Signed: true,
+		Meta: rest.RequestMeta{
+			Symbols:  []string{instID},
+			Category: string(okx.RateLimitCategoryQuery),
+		},
 	})
 	if err != nil {
 		return err
@@ -383,6 +407,10 @@ func (a *AccountClient) SetPositionMode(ctx context.Context, oneWay bool) error 
 		Path:   "/api/v5/account/set-position-mode",
 		Body:   body,
 		Signed: true,
+		Meta: rest.RequestMeta{
+			// set-position-mode account-wide, instId не передаётся.
+			Category: string(okx.RateLimitCategoryQuery),
+		},
 	})
 	if err != nil {
 		return err

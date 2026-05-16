@@ -113,7 +113,32 @@ type Config struct {
 	// блокировка/паника тормозит весь REST-pipeline вызывающего.
 	//
 	// Если nil — no-op, zero overhead. Эта совместимость v2.x гарантируется.
+	//
+	// Deprecated v2.2.0: предпочитайте RateLimitEventObserver — он несёт
+	// OrderCount / Symbols / Category, без которых корректно моделировать
+	// OKX rate limits НЕВОЗМОЖНО (см. RateLimitEvent doc). Старый observer
+	// оставлен только ради обратной совместимости с v2.1.0; в v3 будет удалён.
 	RateLimitObserver func(endpoint string, headers map[string]string)
+
+	// RateLimitEventObserver — расширенный observer, добавлен в v2.2.0.
+	// Получает структурированный RateLimitEvent на каждый REST-ответ, включая
+	// поля, без которых внешний rate-limiter НЕ может моделировать OKX лимиты
+	// точно:
+	//   - OrderCount: 1 для single endpoints, len(orders) для batch.
+	//     OKX лимитирует batch как "300 ORDERS per 2s", не "300 REQUESTS".
+	//   - Symbols:   список InstID, к которым относится запрос. OKX trading
+	//     лимиты per (UID + InstId), поэтому подписчик должен видеть какие
+	//     именно символы потрачены.
+	//   - Category:  Place/Amend/Cancel/Query/Market — нужно для отдельной
+	//     sub-account-level плоскости (1000 new+amend orders / 2s, error 50061).
+	//
+	// Контракт скорости и nil-семантика идентичны старому RateLimitObserver
+	// (см. выше). Если оба observer'а заданы — оба вызываются последовательно
+	// (старый сначала, новый вторым). Это позволяет постепенно мигрировать
+	// существующих подписчиков, не теряя callback'ов.
+	//
+	// Если этот hook nil — no-op, zero overhead.
+	RateLimitEventObserver func(RateLimitEvent)
 
 	// Demo — переводит клиент в режим OKX Demo Trading (paper-trading).
 	// Эффект:

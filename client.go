@@ -64,6 +64,24 @@ func NewClient(cfg Config) (*Client, error) {
 		Demo:                cfg.Demo,
 		RateLimitObserver:   cfg.RateLimitObserver,
 	}
+	// Прокидываем новый event-observer через тонкий адаптер. Структура
+	// RateLimitEvent живёт в корневом okx-пакете и НЕ может пробрасываться
+	// напрямую в internal/rest (import-cycle). Поэтому rest вызывает
+	// callback с плоскими аргументами (endpoint, method, headers, meta),
+	// а мы здесь собираем RateLimitEvent для конечного подписчика.
+	if cfg.RateLimitEventObserver != nil {
+		var userObserver func(RateLimitEvent) = cfg.RateLimitEventObserver
+		restCfg.RateLimitEventObserver = func(endpoint, method string, headers map[string]string, meta rest.RequestMeta) {
+			userObserver(RateLimitEvent{
+				Endpoint:   endpoint,
+				Method:     method,
+				Headers:    headers,
+				OrderCount: meta.OrderCount,
+				Symbols:    meta.Symbols,
+				Category:   RateLimitCategory(meta.Category),
+			})
+		}
+	}
 	var restClient *rest.Client = rest.NewClient(cfg.REST.BaseURL, signer, restCfg, cfg.UserAgent, cfg.Logger)
 
 	return &Client{

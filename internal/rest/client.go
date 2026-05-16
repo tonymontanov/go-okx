@@ -55,11 +55,33 @@ type Config struct {
 	// Demo — если true, на каждый запрос добавляется заголовок
 	// "x-simulated-trading: 1" — OKX переключает обработку в режим paper-trading.
 	Demo bool
-	// RateLimitObserver — опциональный callback, вызывается СИНХРОННО после
-	// получения HTTP-ответа (и до парсинга тела) с собранными rate-limit
+	// RateLimitObserver — опциональный legacy-callback, вызывается СИНХРОННО
+	// после получения HTTP-ответа (и до парсинга тела) с собранными rate-limit
 	// заголовками. nil → no-op. Подробный контракт — см. okx.Config в корневом
 	// пакете (там это поле публикуется конечному пользователю SDK).
 	RateLimitObserver func(endpoint string, headers map[string]string)
+	// RateLimitEventObserver — расширенный callback (v2.2.0+). Принимает
+	// метаданные запроса (endpoint, method, headers, RequestMeta), которые
+	// корневой okx.Client конвертирует в публичный okx.RateLimitEvent.
+	// nil → no-op. Если заданы оба observer'а — оба вызываются последовательно.
+	RateLimitEventObserver func(endpoint, method string, headers map[string]string, meta RequestMeta)
+}
+
+// RequestMeta — метаданные запроса, известные на стороне domain-слоя
+// (swap/trading.go, swap/account.go), которые нужны внешнему rate-limiter'у
+// для точного учёта OKX лимитов. Заполняется вызывающим методом и
+// прокидывается через rest.Options в RateLimitEventObserver. Если пусто —
+// observer получит нулевые значения (count=0, нет symbols, category="").
+type RequestMeta struct {
+	// OrderCount — сколько ордеров затрагивает запрос. 1 для single, N
+	// для batch, 0 для не-trading. См. okx.RateLimitEvent.OrderCount.
+	OrderCount int
+	// Symbols — список OKX InstID. См. okx.RateLimitEvent.Symbols.
+	Symbols []string
+	// Category — строковое представление okx.RateLimitCategory
+	// ("place"/"amend"/"cancel"/"query"/"market"/""). Передаём как
+	// строку, чтобы не возникал import-cycle internal/rest ↔ корневой okx.
+	Category string
 }
 
 // Options — параметры одного REST-запроса.
@@ -69,6 +91,10 @@ type Options struct {
 	Query  url.Values
 	Body   any
 	Signed bool
+	// Meta — метаданные для RateLimitEventObserver. Если zero — observer
+	// получает нули. Заполняется доменными методами swap/* там, где
+	// известны instId / batch size / категория запроса.
+	Meta RequestMeta
 }
 
 // Response — обобщённая обёртка ответа OKX:
@@ -107,13 +133,14 @@ func (r Response) UnmarshalData(dest any) error {
 
 // Client — низкоуровневый REST-клиент.
 type Client struct {
-	httpClient        *http.Client
-	signer            *auth.Signer
-	baseURL           string
-	userAgent         string
-	logger            okxlog.Logger
-	demo              bool
-	rateLimitObserver func(endpoint string, headers map[string]string)
+	httpClient             *http.Client
+	signer                 *auth.Signer
+	baseURL                string
+	userAgent              string
+	logger                 okxlog.Logger
+	demo                   bool
+	rateLimitObserver      func(endpoint string, headers map[string]string)
+	rateLimitEventObserver func(endpoint, method string, headers map[string]string, meta RequestMeta)
 }
 
 // NewClient создаёт REST-клиент.
@@ -132,13 +159,14 @@ func NewClient(baseURL string, signer *auth.Signer, cfg Config, ua string, log o
 		Transport: transport,
 	}
 	return &Client{
-		httpClient:        httpClient,
-		signer:            signer,
-		baseURL:           strings.TrimRight(baseURL, "/"),
-		userAgent:         ua,
-		logger:            log,
-		demo:              cfg.Demo,
-		rateLimitObserver: cfg.RateLimitObserver,
+		httpClient:             httpClient,
+		signer:                 signer,
+		baseURL:                strings.TrimRight(baseURL, "/"),
+		userAgent:              ua,
+		logger:                 log,
+		demo:                   cfg.Demo,
+		rateLimitObserver:      cfg.RateLimitObserver,
+		rateLimitEventObserver: cfg.RateLimitEventObserver,
 	}
 }
 
@@ -187,16 +215,26 @@ func (c *Client) Do(ctx context.Context, opts Options) (Response, map[string]str
 	}()
 
 	rateLimits = collectRateLimitHeaders(httpResp.Header)
-	// Уведомляем observer'а ДО парсинга тела: даже если ответ невалидный JSON
-	// или содержит OKX-ошибку, rate-limit headers всё равно полезны для
+	// Уведомляем observer'ов ДО парсинга тела: даже если ответ невалидный JSON
+	// или содержит OKX-ошибку, rate-limit информация всё равно полезна для
 	// внешнего rate-limiter'а (например, чтобы он не блокировал retry).
 	// Гарантия non-nil map в observer — упрощает подписчика (см. okx.Config).
-	if c.rateLimitObserver != nil {
+	//
+	// Если заданы оба observer'а — оба вызываются последовательно. Порядок:
+	// сначала legacy (RateLimitObserver), потом event (RateLimitEventObserver).
+	// Это позволяет постепенно мигрировать существующих подписчиков, не теряя
+	// событий ни на одной стороне.
+	if c.rateLimitObserver != nil || c.rateLimitEventObserver != nil {
 		var hdrs map[string]string = rateLimits
 		if hdrs == nil {
 			hdrs = map[string]string{}
 		}
-		c.rateLimitObserver(opts.Path, hdrs)
+		if c.rateLimitObserver != nil {
+			c.rateLimitObserver(opts.Path, hdrs)
+		}
+		if c.rateLimitEventObserver != nil {
+			c.rateLimitEventObserver(opts.Path, strings.ToUpper(opts.Method), hdrs, opts.Meta)
+		}
 	}
 
 	var raw []byte
