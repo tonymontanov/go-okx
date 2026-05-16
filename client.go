@@ -43,6 +43,9 @@ type Client struct {
 
 	swapOnce sync.Once
 	swapVal  any
+
+	spotOnce sync.Once
+	spotVal  any
 }
 
 // NewClient создаёт корневой клиент SDK. cfg проходит withDefaults + validate.
@@ -147,4 +150,47 @@ func (c *Client) Swap() any {
 		c.swapVal = swapClientFactory(c)
 	})
 	return c.swapVal
+}
+
+// spotClientFactory — функция-строитель spot-клиента. Зарегистрируется пакетом
+// spot в init() ровно как swap (см. RegisterSwapFactory).
+var spotClientFactory func(c *Client) any
+
+// RegisterSpotFactory регистрирует фабрику spot-клиента. Должна вызываться из
+// init() пакета spot. Идемпотентна.
+//
+// Spot и Swap — независимые домены: подключение одного НЕ требует второго.
+// Это позволяет приложениям импортировать только нужный профиль и не
+// тянуть в бинарь лишний код:
+//
+//	import _ "github.com/tonymontanov/go-okx/v2/spot"  // только spot
+//	import _ "github.com/tonymontanov/go-okx/v2/swap"  // только swap
+//
+// Корневой пакет okx НЕ импортирует ни spot, ни swap — это обходит
+// import-cycle (оба пакета импортируют корневой okx для okx.Config /
+// okx.NewError и т.д.).
+func RegisterSpotFactory(f func(c *Client) any) {
+	if spotClientFactory == nil {
+		spotClientFactory = f
+	}
+}
+
+// Spot возвращает spot-саб-клиент. См. Swap() — семантика идентична.
+//
+// Идиома использования:
+//
+//	var spotClient *spot.Client = client.Spot().(*spot.Client)
+//
+// Lazy: создаётся при первом обращении через зарегистрированную фабрику.
+// Если пакет spot не импортирован (фабрика не зарегистрирована) —
+// возвращается nil и пишется warn в логгер.
+func (c *Client) Spot() any {
+	c.spotOnce.Do(func() {
+		if spotClientFactory == nil {
+			c.logger.Warn("okx.Client.Spot: spot factory is not registered; import _ \"github.com/tonymontanov/go-okx/v2/spot\"")
+			return
+		}
+		c.spotVal = spotClientFactory(c)
+	})
+	return c.spotVal
 }
