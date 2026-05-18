@@ -192,6 +192,45 @@ func (c *Conn) Start(ctx context.Context) {
 	})
 }
 
+/*
+EnsureReady идемпотентно запускает Start(ctx) и блокируется до тех пор,
+пока сокет не будет установлен (для private — пока не пройдёт login).
+Возвращает ошибку по ctx.Done() или ErrConnClosed.
+
+Используется доменными слоями (например WS Order API) перед первым
+SendOp: без явной готовности SendOp вернул бы ErrConnNotReady, а в
+HFT-сценариях лучше пождать на старте, чем гонять backoff-retry в
+caller-коде.
+
+Тонкость: «готовность» = socket != nil. Это гарантирует, что для
+public соединения push-сообщения уже могут идти, а для private —
+что login прошёл (login делается СИНХРОННО внутри connectAndRun
+до записи socket в c.socket).
+*/
+func (c *Conn) EnsureReady(ctx context.Context) error {
+	c.Start(ctx)
+
+	var ticker *time.Ticker = time.NewTicker(2 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		c.mu.RLock()
+		var closed bool = c.closed
+		var ready bool = c.socket != nil
+		c.mu.RUnlock()
+		if closed {
+			return ErrConnClosed
+		}
+		if ready {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+		}
+	}
+}
+
 // Subscribe добавляет подписку в registry и, если соединение установлено,
 // сразу отправляет subscribe-команду. После reconnect та же подписка будет
 // автоматически восстановлена.

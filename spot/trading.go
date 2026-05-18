@@ -283,23 +283,19 @@ func (t *TradingClient) buildCreateOrderBody(req types.CreateOrderRequest) (map[
 	return body, nil
 }
 
-/*
-ModifyOrder — amend ордера. OKX меняет только sz/px; side/type — нет.
-*/
-func (t *TradingClient) ModifyOrder(ctx context.Context, req types.ModifyOrderRequest) (types.OrderInfo, error) {
-	var info types.OrderInfo
-	var err error
-
+// buildAmendOrderBody — общий конструктор тела для amend-order (одиночный
+// и batch варианты, REST и WS). Валидация вынесена сюда, чтобы WS и REST
+// возвращали одинаковые типизированные ошибки на одинаковые входные данные.
+func buildAmendOrderBody(req types.ModifyOrderRequest) (map[string]any, error) {
 	if req.InstID == "" {
-		return info, okx.NewError(okx.ErrorKindInvalidRequest, "", "trading.ModifyOrder: InstID is empty", nil)
+		return nil, okx.NewError(okx.ErrorKindInvalidRequest, "", "trading.ModifyOrder: InstID is empty", nil)
 	}
 	if (req.OrderID == "" && req.ClientOrderID == "") || (req.OrderID != "" && req.ClientOrderID != "") {
-		return info, okx.NewError(okx.ErrorKindInvalidRequest, "", "trading.ModifyOrder: exactly one of OrderID/ClientOrderID must be set", nil)
+		return nil, okx.NewError(okx.ErrorKindInvalidRequest, "", "trading.ModifyOrder: exactly one of OrderID/ClientOrderID must be set", nil)
 	}
 	if req.NewSize.IsZero() && req.NewPrice.IsZero() {
-		return info, okx.NewError(okx.ErrorKindInvalidRequest, "", "trading.ModifyOrder: NewSize or NewPrice must be set", nil)
+		return nil, okx.NewError(okx.ErrorKindInvalidRequest, "", "trading.ModifyOrder: NewSize or NewPrice must be set", nil)
 	}
-
 	var body map[string]any = make(map[string]any, 6)
 	body["instId"] = req.InstID
 	if req.OrderID != "" {
@@ -316,6 +312,56 @@ func (t *TradingClient) ModifyOrder(ctx context.Context, req types.ModifyOrderRe
 	}
 	if req.RequestID != "" {
 		body["reqId"] = req.RequestID
+	}
+	return body, nil
+}
+
+// buildCancelOrderBody — общий конструктор тела cancel-order (REST и WS).
+func buildCancelOrderBody(req types.CancelOrderRequest) (map[string]any, error) {
+	if req.InstID == "" {
+		return nil, okx.NewError(okx.ErrorKindInvalidRequest, "", "trading.CancelOrder: InstID is empty", nil)
+	}
+	if (req.OrderID == "" && req.ClientOrderID == "") || (req.OrderID != "" && req.ClientOrderID != "") {
+		return nil, okx.NewError(okx.ErrorKindInvalidRequest, "", "trading.CancelOrder: exactly one of OrderID/ClientOrderID must be set", nil)
+	}
+	var body map[string]any = map[string]any{"instId": req.InstID}
+	if req.OrderID != "" {
+		body["ordId"] = req.OrderID
+	}
+	if req.ClientOrderID != "" {
+		body["clOrdId"] = req.ClientOrderID
+	}
+	return body, nil
+}
+
+// placeholderInfosModify — REST/WS-симметричная заглушка при ошибке
+// transport-уровня (chunk не успел уйти).
+func placeholderInfosModify(chunk []types.ModifyOrderRequest) []types.OrderInfo {
+	var out []types.OrderInfo = make([]types.OrderInfo, 0, len(chunk))
+	var i int
+	for i = 0; i < len(chunk); i++ {
+		out = append(out, types.OrderInfo{
+			InstID:        chunk[i].InstID,
+			ClientOrderID: chunk[i].ClientOrderID,
+			Price:         chunk[i].NewPrice,
+			Size:          chunk[i].NewSize,
+			State:         types.OrderStateUnknown,
+		})
+	}
+	return out
+}
+
+/*
+ModifyOrder — amend ордера. OKX меняет только sz/px; side/type — нет.
+*/
+func (t *TradingClient) ModifyOrder(ctx context.Context, req types.ModifyOrderRequest) (types.OrderInfo, error) {
+	var info types.OrderInfo
+	var err error
+
+	var body map[string]any
+	body, err = buildAmendOrderBody(req)
+	if err != nil {
+		return info, err
 	}
 
 	var resp rest.Response
@@ -368,23 +414,14 @@ func (t *TradingClient) ModifyOrder(ctx context.Context, req types.ModifyOrderRe
 CancelOrder отменяет один ордер. Должен быть задан ровно один из идентификаторов.
 */
 func (t *TradingClient) CancelOrder(ctx context.Context, req types.CancelOrderRequest) error {
-	if req.InstID == "" {
-		return okx.NewError(okx.ErrorKindInvalidRequest, "", "trading.CancelOrder: InstID is empty", nil)
-	}
-	if (req.OrderID == "" && req.ClientOrderID == "") || (req.OrderID != "" && req.ClientOrderID != "") {
-		return okx.NewError(okx.ErrorKindInvalidRequest, "", "trading.CancelOrder: exactly one of OrderID/ClientOrderID must be set", nil)
-	}
-
-	var body map[string]any = map[string]any{"instId": req.InstID}
-	if req.OrderID != "" {
-		body["ordId"] = req.OrderID
-	}
-	if req.ClientOrderID != "" {
-		body["clOrdId"] = req.ClientOrderID
+	var body map[string]any
+	var err error
+	body, err = buildCancelOrderBody(req)
+	if err != nil {
+		return err
 	}
 
 	var resp rest.Response
-	var err error
 	resp, _, err = t.c.rest().Do(ctx, rest.Options{
 		Method: "POST",
 		Path:   "/api/v5/trade/cancel-order",
