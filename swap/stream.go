@@ -82,8 +82,100 @@ func (s *StreamClient) WatchOrderbook(
 	ctx context.Context, instID string, depth int,
 	handler func(types.OrderBookSnapshot), errHandler func(error),
 ) error {
+	return s.watchBookEngine(ctx, "books", instID, depth, handler, errHandler)
+}
+
+/*
+WatchOrderbookL2Tbt — full L2-стакан tick-by-tick. Канал books-l2-tbt.
+Push на каждое изменение, без 100ms-батчинга.
+
+ТРЕБОВАНИЯ OKX: VIP4+ или Market Maker. Иначе сервер ответит 60018.
+
+КОГДА БРАТЬ:
+  - latency-арбитраж, cross-exchange MM, стратегии с интервалами ≤10мс.
+
+КОГДА НЕ БРАТЬ:
+  - обычной MM с интервалами 100мс+ достаточно "books".
+*/
+func (s *StreamClient) WatchOrderbookL2Tbt(
+	ctx context.Context, instID string, depth int,
+	handler func(types.OrderBookSnapshot), errHandler func(error),
+) error {
+	return s.watchBookEngine(ctx, "books-l2-tbt", instID, depth, handler, errHandler)
+}
+
+/*
+WatchOrderbookBooks50L2Tbt — top-50 L2-стакан tick-by-tick. Канал
+books50-l2-tbt. Промежуточный между "books" и "books-l2-tbt" по
+требованиям и нагрузке.
+
+ТРЕБОВАНИЯ OKX: VIP2+ или Market Maker.
+*/
+func (s *StreamClient) WatchOrderbookBooks50L2Tbt(
+	ctx context.Context, instID string, depth int,
+	handler func(types.OrderBookSnapshot), errHandler func(error),
+) error {
+	return s.watchBookEngine(ctx, "books50-l2-tbt", instID, depth, handler, errHandler)
+}
+
+/*
+WatchOrderbookBooks5 — top-5 уровней, batch 100ms, snapshot-only.
+Не использует orderbook.Engine, push приходит как ПОЛНЫЙ snapshot
+(без incremental updates).
+
+КОГДА БРАТЬ:
+  - стратегии, которым достаточно top-5;
+  - не нужен state на клиенте, не нужна проверка консистентности.
+
+ОГРАНИЧЕНИЯ:
+  - depth-параметр игнорируется (всегда 5);
+  - SeqID/Checksum в snapshot не заполняются.
+*/
+func (s *StreamClient) WatchOrderbookBooks5(
+	ctx context.Context, instID string,
+	handler func(types.OrderBookSnapshot), errHandler func(error),
+) error {
 	if instID == "" {
-		return okx.NewError(okx.ErrorKindInvalidRequest, "", "stream.WatchOrderbook: InstID is empty", nil)
+		return okx.NewError(okx.ErrorKindInvalidRequest, "", "stream.WatchOrderbookBooks5: InstID is empty", nil)
+	}
+	var sub *ws.Subscription = &ws.Subscription{
+		Channel: "books5",
+		InstID:  instID,
+		Handler: func(_ string, payload []byte) {
+			var pushes []rawBookPush
+			if err := codec.Unmarshal(payload, &pushes); err != nil {
+				s.c.logger().Warn("stream.WatchOrderbookBooks5: parse", okx.Str("instId", instID), okx.Err(err))
+				return
+			}
+			var i int
+			for i = 0; i < len(pushes); i++ {
+				handler(types.OrderBookSnapshot{
+					InstID: instID,
+					Bids:   parseBookLevels(pushes[i].Bids),
+					Asks:   parseBookLevels(pushes[i].Asks),
+				})
+			}
+		},
+	}
+	s.c.publicConn().Start(ctx)
+	if err := s.c.publicConn().Subscribe(sub); err != nil {
+		if errHandler != nil {
+			errHandler(err)
+		}
+		return err
+	}
+	return nil
+}
+
+// watchBookEngine — общая реализация для всех L2-каналов с инкрементальными
+// обновлениями (books, books-l2-tbt, books50-l2-tbt). Один формат
+// сообщений, один engine, одна логика — отличается только имя канала.
+func (s *StreamClient) watchBookEngine(
+	ctx context.Context, channel, instID string, depth int,
+	handler func(types.OrderBookSnapshot), errHandler func(error),
+) error {
+	if instID == "" {
+		return okx.NewError(okx.ErrorKindInvalidRequest, "", "stream.WatchOrderbook("+channel+"): InstID is empty", nil)
 	}
 	if depth <= 0 {
 		depth = 25
@@ -93,7 +185,7 @@ func (s *StreamClient) WatchOrderbook(
 	var eng *orderbook.Engine = orderbook.NewEngine(instID, cfg.Orderbook.MaxDepth, cfg.Orderbook.ChecksumLevels)
 
 	var sub *ws.Subscription = &ws.Subscription{
-		Channel: "books",
+		Channel: channel,
 		InstID:  instID,
 		Reset: func() {
 			eng.MarkResynced(0, 0)
@@ -101,7 +193,7 @@ func (s *StreamClient) WatchOrderbook(
 		Handler: func(action string, payload []byte) {
 			var pushes []rawBookPush
 			if err := codec.Unmarshal(payload, &pushes); err != nil {
-				s.c.logger().Warn("stream.WatchOrderbook: parse", okx.Str("instId", instID), okx.Err(err))
+				s.c.logger().Warn("stream.WatchOrderbook: parse", okx.Str("channel", channel), okx.Str("instId", instID), okx.Err(err))
 				return
 			}
 			var i int
