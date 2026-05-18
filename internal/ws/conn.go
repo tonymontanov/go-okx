@@ -44,7 +44,9 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -54,6 +56,17 @@ import (
 	"github.com/tonymontanov/go-okx/v2/internal/okxlog"
 	"github.com/tonymontanov/go-okx/v2/internal/okxmet"
 )
+
+// ErrConnClosed возвращается, когда SendOp вызван на уже закрытом Conn.
+var ErrConnClosed = errors.New("ws: connection closed")
+
+// ErrConnNotReady возвращается, когда SendOp вызван до установки сокета
+// (Start ещё не успел подключиться или сокет в режиме reconnect-backoff).
+var ErrConnNotReady = errors.New("ws: connection not ready")
+
+// ErrOpTimeout возвращается, когда reply на op-команду не пришёл за
+// отведённое время.
+var ErrOpTimeout = errors.New("ws: op-request timeout")
 
 // Subscription описывает одну подписку. Поля устанавливаются вызывающим кодом
 // (swap/stream.go).
@@ -116,11 +129,25 @@ type Conn struct {
 
 	startOnce sync.Once
 
+	// pendingMu защищает pending. Намеренно отдельный мьютекс от mu
+	// (которым защищается subs/socket/closed) — это позволяет SendOp
+	// регистрировать pending без блокировки read-loop'а в момент connect.
+	pendingMu sync.Mutex
+	pending   map[string]chan OpResponse
+
+	// opIDSeq — atomic-счётчик для генерации correlation-id, когда
+	// caller не передал свой. Стартует с 1 и инкрементируется.
+	opIDSeq uint64
+
 	cReceived okxmet.Counter
 	cDropped  okxmet.Counter
 	cReconn   okxmet.Counter
 	cSub      okxmet.Counter
 	cPingErr  okxmet.Counter
+	cOpSent   okxmet.Counter
+	cOpReply  okxmet.Counter
+	cOpTmout  okxmet.Counter
+	cOpOrphan okxmet.Counter
 }
 
 // NewConn создаёт Conn. На этом этапе сетевая активность ещё не начинается —
@@ -142,11 +169,16 @@ func NewConn(cfg Config, signer *auth.Signer, log okxlog.Logger, mf okxmet.Count
 		logger:    log,
 		metrics:   mf,
 		subs:      make(map[string]*Subscription, 16),
+		pending:   make(map[string]chan OpResponse, 16),
 		cReceived: mf.Counter("okx_ws_messages_received_total", "endpoint", endpoint),
 		cDropped:  mf.Counter("okx_ws_messages_dropped_total", "endpoint", endpoint),
 		cReconn:   mf.Counter("okx_ws_reconnects_total", "endpoint", endpoint),
 		cSub:      mf.Counter("okx_ws_subscriptions_total", "endpoint", endpoint),
 		cPingErr:  mf.Counter("okx_ws_ping_failed_total", "endpoint", endpoint),
+		cOpSent:   mf.Counter("okx_ws_op_sent_total", "endpoint", endpoint),
+		cOpReply:  mf.Counter("okx_ws_op_reply_total", "endpoint", endpoint),
+		cOpTmout:  mf.Counter("okx_ws_op_timeout_total", "endpoint", endpoint),
+		cOpOrphan: mf.Counter("okx_ws_op_orphan_total", "endpoint", endpoint),
 	}
 }
 
@@ -215,10 +247,139 @@ func (c *Conn) Close() error {
 	c.socket = nil
 	c.mu.Unlock()
 
+	c.failAllPending(ErrConnClosed)
+
 	if s != nil {
 		_ = s.Close()
 	}
 	return nil
+}
+
+/*
+SendOp отправляет op-команду (order/cancel-order/amend-order/batch-orders/
+cancel-batch-orders/amend-batch-orders/mass-cancel) и ждёт reply.
+
+ПОВЕДЕНИЕ:
+  - Если req.ID пуст — генерируется уникальный возрастающий id
+    (atomic-счётчик).
+  - Pending-канал регистрируется ДО writeMessage, чтобы read-loop успел
+    его найти даже при очень быстром ответе сервера.
+  - Завершение по одному из условий: получен reply | ctx.Done | прошёл
+    timeout (если timeout > 0). Во всех случаях запись удаляется из
+    pending-map (defer).
+  - На уже закрытом Conn возвращается ErrConnClosed.
+  - Если сокет ещё не установлен (Start не вызван или backoff между
+    reconnect'ами) — возвращается ErrConnNotReady. Это намеренно: op-
+    команды НЕ переживают reconnect (в отличие от subscriptions), и
+    «магически копить» их в буфере было бы опасно для HFT-сценариев.
+
+ВОЗВРАЩАЕМОЕ ЗНАЧЕНИЕ:
+OpResponse содержит top-level code/msg/data + inTime/outTime. Top-level
+code != "0" значит, что команда отвергнута целиком (например 60012
+"Illegal request"). Per-item ошибки (sCode/sMsg внутри Data) разбирает
+доменный слой.
+*/
+func (c *Conn) SendOp(ctx context.Context, req OpRequest, timeout time.Duration) (OpResponse, error) {
+	var empty OpResponse
+	if req.Op == "" {
+		return empty, okxerr.New(okxerr.ErrorKindInvalidRequest, "", "ws: empty op", nil)
+	}
+
+	c.mu.RLock()
+	var closed bool = c.closed
+	var socket *websocket.Conn = c.socket
+	c.mu.RUnlock()
+	if closed {
+		return empty, ErrConnClosed
+	}
+	if socket == nil {
+		return empty, ErrConnNotReady
+	}
+
+	if req.ID == "" {
+		req.ID = strconv.FormatUint(atomic.AddUint64(&c.opIDSeq, 1), 10)
+	}
+
+	var ch chan OpResponse = make(chan OpResponse, 1)
+	c.pendingMu.Lock()
+	if _, exists := c.pending[req.ID]; exists {
+		c.pendingMu.Unlock()
+		return empty, okxerr.New(okxerr.ErrorKindInvalidRequest, "", "ws: duplicate op id", nil)
+	}
+	c.pending[req.ID] = ch
+	c.pendingMu.Unlock()
+
+	defer func() {
+		c.pendingMu.Lock()
+		delete(c.pending, req.ID)
+		c.pendingMu.Unlock()
+	}()
+
+	var wire opRequestMessage = opRequestMessage{
+		ID:   req.ID,
+		Op:   req.Op,
+		Args: req.Args,
+	}
+	var raw []byte
+	var err error
+	raw, err = codec.Marshal(wire)
+	if err != nil {
+		return empty, fmt.Errorf("marshal op: %w", err)
+	}
+	if err = c.writeMessage(socket, raw); err != nil {
+		return empty, fmt.Errorf("write op: %w", err)
+	}
+	c.cOpSent.Inc()
+
+	if timeout <= 0 {
+		// Чисто ctx-driven ожидание.
+		select {
+		case resp := <-ch:
+			return resp, nil
+		case <-ctx.Done():
+			return empty, ctx.Err()
+		}
+	}
+
+	var timer *time.Timer = time.NewTimer(timeout)
+	defer timer.Stop()
+	select {
+	case resp := <-ch:
+		return resp, nil
+	case <-ctx.Done():
+		return empty, ctx.Err()
+	case <-timer.C:
+		c.cOpTmout.Inc()
+		return empty, ErrOpTimeout
+	}
+}
+
+// failAllPending доставляет всем ожидающим SendOp синтетический OpResponse
+// с заданным error-кодом, после чего очищает pending-map. Используется
+// при reconnect и Close: op-команды не переживают разрыв соединения, и
+// caller'ы должны получить явный ответ, а не зависнуть до таймаута.
+func (c *Conn) failAllPending(err error) {
+	c.pendingMu.Lock()
+	if len(c.pending) == 0 {
+		c.pendingMu.Unlock()
+		return
+	}
+	var failed map[string]chan OpResponse = c.pending
+	c.pending = make(map[string]chan OpResponse, 16)
+	c.pendingMu.Unlock()
+
+	var msg string = ""
+	if err != nil {
+		msg = err.Error()
+	}
+	for id, ch := range failed {
+		// Не блокируемся: chan buffered=1; если кто-то уже отписался —
+		// просто отбрасываем.
+		select {
+		case ch <- OpResponse{ID: id, Code: "disconnected", Msg: msg}:
+		default:
+		}
+	}
 }
 
 // supervise — главный supervisor-loop. Подключается → читает → при ошибке
@@ -289,6 +450,9 @@ func (c *Conn) connectAndRun(ctx context.Context) error {
 			c.socket = nil
 		}
 		c.mu.Unlock()
+		// op-команды НЕ переживают reconnect: завершаем все pending
+		// синтетическим ответом, чтобы caller'ы не висели до таймаута.
+		c.failAllPending(errors.New("ws: connection lost"))
 		_ = socket.Close()
 	}()
 
@@ -427,6 +591,14 @@ func (c *Conn) readLoop(ctx context.Context, socket *websocket.Conn) error {
 			c.handleEvent(env)
 			continue
 		}
+
+		// op-reply имеет непустой id, эхнутый сервером из request.
+		// Push-сообщения id не несут, поэтому ветви не пересекаются.
+		if env.ID != "" {
+			c.dispatchOpReply(env)
+			continue
+		}
+
 		if env.Arg.Channel == "" || len(env.Data) == 0 {
 			c.cDropped.Inc()
 			continue
@@ -448,6 +620,37 @@ func (c *Conn) readLoop(ctx context.Context, socket *websocket.Conn) error {
 			continue
 		}
 		sub.Handler(env.Action, env.Data)
+	}
+}
+
+// dispatchOpReply ищет pending-канал по id и доставляет в него OpResponse.
+// Если pending не найден — reply «осиротевший» (caller таймаутнул или
+// отменил ctx раньше): инкрементим counter и тихо отбрасываем.
+func (c *Conn) dispatchOpReply(env incomingEnvelope) {
+	c.pendingMu.Lock()
+	var ch chan OpResponse = c.pending[env.ID]
+	c.pendingMu.Unlock()
+
+	if ch == nil {
+		c.cOpOrphan.Inc()
+		return
+	}
+	var resp OpResponse = OpResponse{
+		ID:      env.ID,
+		Op:      env.Op,
+		Code:    env.Code,
+		Msg:     env.Msg,
+		Data:    env.Data,
+		InTime:  env.InTime,
+		OutTime: env.OutTime,
+	}
+	select {
+	case ch <- resp:
+		c.cOpReply.Inc()
+	default:
+		// Buffer=1; если уже занят — кто-то нас опередил. Маркируем как
+		// orphan для видимости (например двойной reply от сервера).
+		c.cOpOrphan.Inc()
 	}
 }
 
