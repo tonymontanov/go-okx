@@ -98,6 +98,10 @@ const (
 // ParseOrderState — реэкспорт.
 var ParseOrderState = commontypes.ParseOrderState
 
+// CancelAllAfterResult — ответ POST /api/v5/trade/cancel-all-after.
+// См. commontypes.CancelAllAfterResult и types/cancel-all-after.go.
+type CancelAllAfterResult = commontypes.CancelAllAfterResult
+
 // Общие модели данных — orderbook level/snapshot, candles, agg trades.
 // Формат идентичен для spot и swap (REST/WS endpoints общие), поэтому
 // переиспользуем через алиасы на общий пакет.

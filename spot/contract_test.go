@@ -621,6 +621,48 @@ func TestContract_ModifyOrder(t *testing.T) {
 	}
 }
 
+func TestContract_CancelAllAfter(t *testing.T) {
+	var fixture string = `{
+		"code":"0","msg":"",
+		"data":[{"triggerTime":"1700000010000","ts":"1700000000000"}]
+	}`
+	var _, client = mockOKX(t, map[string]string{
+		"/api/v5/trade/cancel-all-after": fixture,
+	})
+	var res types.CancelAllAfterResult
+	var err error
+	res, err = spotOf(client).Trading().CancelAllAfter(context.Background(), 30*time.Second)
+	if err != nil {
+		t.Fatalf("CancelAllAfter: %v", err)
+	}
+	if res.TriggerTimeMs != 1700000010000 {
+		t.Fatalf("TriggerTimeMs: %d", res.TriggerTimeMs)
+	}
+	if res.TsMs != 1700000000000 {
+		t.Fatalf("TsMs: %d", res.TsMs)
+	}
+}
+
+func TestContract_CancelAllAfter_Disarm(t *testing.T) {
+	// При timeout=0 OKX возвращает triggerTime=""; парсинг должен дать 0.
+	var fixture string = `{
+		"code":"0","msg":"",
+		"data":[{"triggerTime":"","ts":"1700000000000"}]
+	}`
+	var _, client = mockOKX(t, map[string]string{
+		"/api/v5/trade/cancel-all-after": fixture,
+	})
+	var res types.CancelAllAfterResult
+	var err error
+	res, err = spotOf(client).Trading().CancelAllAfter(context.Background(), 0)
+	if err != nil {
+		t.Fatalf("CancelAllAfter: %v", err)
+	}
+	if res.TriggerTimeMs != 0 {
+		t.Fatalf("TriggerTimeMs must be 0 on disarm, got %d", res.TriggerTimeMs)
+	}
+}
+
 func TestContract_NetworkTimeout(t *testing.T) {
 	var srv *httptest.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(200 * time.Millisecond)

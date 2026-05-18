@@ -876,6 +876,100 @@ func (t *TradingClient) CancelForgottenOrders(ctx context.Context, instID string
 	return stale, err
 }
 
+/*
+CancelAllAfter вооружает (или disarm-ит) серверный таймер dead-man's
+switch'а: если в течение `timeout` секунд клиент не вызовет endpoint
+снова, OKX автоматически отменит ВСЕ открытые ордера учётки
+(не только SPOT — всех инструментов).
+
+ПАРАМЕТРЫ:
+  - timeout > 0  (10..120s по spec OKX): арм. TriggerTimeMs в ответе —
+    момент, когда биржа применит cancel-all-если-нет-refresh.
+  - timeout == 0: disarm. TriggerTimeMs в ответе = 0.
+
+ИСПОЛЬЗОВАНИЕ В HFT:
+В hot-loop стратегии вызывайте каждые ~⅓ timeout (например, для
+timeout=30s — каждые 10s). Это даёт большой запас на сетевые задержки.
+
+ОТНОШЕНИЕ К MASSCANCEL:
+mass-cancel (WS, Phase 2.1) — синхронный panic-button «отмени всё
+сейчас». cancel-all-after — асинхронный «отмени всё через N секунд,
+если я не обновлю». Используются совместно: arm на старте, mass-cancel
+или disarm на graceful shutdown.
+*/
+func (t *TradingClient) CancelAllAfter(ctx context.Context, timeout time.Duration) (types.CancelAllAfterResult, error) {
+	var out types.CancelAllAfterResult
+	if timeout < 0 {
+		return out, okx.NewError(okx.ErrorKindInvalidRequest, "", "trading.CancelAllAfter: timeout must be >= 0", nil)
+	}
+	var seconds int64 = int64(timeout / time.Second)
+	var body map[string]any = map[string]any{
+		"timeOut": fmt.Sprintf("%d", seconds),
+	}
+
+	var resp rest.Response
+	var err error
+	resp, _, err = t.c.rest().Do(ctx, rest.Options{
+		Method: "POST",
+		Path:   "/api/v5/trade/cancel-all-after",
+		Body:   body,
+		Signed: true,
+		Meta: rest.RequestMeta{
+			Symbols:  nil,
+			Category: string(okx.RateLimitCategoryCancel),
+		},
+	})
+	if err != nil {
+		return out, err
+	}
+
+	type rawEntry struct {
+		TriggerTime string `json:"triggerTime"`
+		Ts          string `json:"ts"`
+	}
+	var entries []rawEntry
+	if err = resp.UnmarshalData(&entries); err != nil {
+		return out, okx.NewError(okx.ErrorKindUnknown, "", "trading.CancelAllAfter: parse", err)
+	}
+	if len(entries) == 0 {
+		return out, nil
+	}
+	var e rawEntry = entries[0]
+	if e.TriggerTime != "" {
+		out.TriggerTimeMs, _ = parseInt64Lossy(e.TriggerTime)
+	}
+	if e.Ts != "" {
+		out.TsMs, _ = parseInt64Lossy(e.Ts)
+	}
+	return out, nil
+}
+
+// parseInt64Lossy парсит строку OKX-таймштампа в int64; при ошибке
+// возвращает 0. Используется только для безопасного парсинга числовых
+// строк, для которых ошибка не критична (не блокирующая контракт).
+func parseInt64Lossy(s string) (int64, error) {
+	var v int64
+	var err error
+	v, err = strconvAtoi64(s)
+	return v, err
+}
+
+// strconvAtoi64 — extracted, чтобы избежать прямой зависимости на strconv
+// из этого файла (стиль файла — минимум импортов; strconv уже импортирован
+// в других файлах пакета).
+func strconvAtoi64(s string) (int64, error) {
+	var n int64
+	var i int
+	for i = 0; i < len(s); i++ {
+		var c byte = s[i]
+		if c < '0' || c > '9' {
+			return 0, fmt.Errorf("invalid digit %q in %q", c, s)
+		}
+		n = n*10 + int64(c-'0')
+	}
+	return n, nil
+}
+
 // rememberMapping добавляет ClOrdID ↔ OrdID и фиксирует время создания.
 func (t *TradingClient) rememberMapping(clOrdID, ordID string, createdAtMs int64) {
 	if clOrdID == "" || ordID == "" {

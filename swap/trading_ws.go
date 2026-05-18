@@ -518,6 +518,68 @@ func (w *WSTradingClient) MassCancel(ctx context.Context, instType, instFamily s
 }
 
 /*
+CancelAllAfter — WS-вариант dead-man's switch (op="cancel-all-after").
+Семантика идентична REST-варианту в trading.go: timeout > 0 — арм
+(10..120s по spec OKX), timeout == 0 — disarm. Преимущество WS — лучшая
+латентность для refresh-цикла стратегии.
+*/
+func (w *WSTradingClient) CancelAllAfter(ctx context.Context, timeout time.Duration) (types.CancelAllAfterResult, error) {
+	var out types.CancelAllAfterResult
+	if timeout < 0 {
+		return out, okx.NewError(okx.ErrorKindInvalidRequest, "", "ws trading.CancelAllAfter: timeout must be >= 0", nil)
+	}
+	if err := w.ensureReady(ctx); err != nil {
+		return out, err
+	}
+	var seconds int64 = int64(timeout / time.Second)
+	var body map[string]any = map[string]any{
+		"timeOut": fmt.Sprintf("%d", seconds),
+	}
+
+	var resp ws.OpResponse
+	var err error
+	resp, err = w.conn().SendOp(ctx, ws.OpRequest{
+		Op:   "cancel-all-after",
+		Args: []any{body},
+	}, WSDefaultTimeout)
+	if err != nil {
+		return out, err
+	}
+	if resp.Code == "disconnected" {
+		return out, okx.NewError(okx.ErrorKindNetwork, "", "ws trading.CancelAllAfter: connection lost", nil)
+	}
+	if resp.Code != "" && resp.Code != "0" {
+		return out, &okx.Error{
+			Kind:    okx.MapOKXCode(resp.Code, resp.Msg),
+			OKXCode: resp.Code,
+			Message: "ws trading.CancelAllAfter: " + resp.Msg,
+		}
+	}
+	if len(resp.Data) == 0 {
+		return out, nil
+	}
+
+	type rawEntry struct {
+		TriggerTime string `json:"triggerTime"`
+		Ts          string `json:"ts"`
+	}
+	var entries []rawEntry
+	if err = codec.Unmarshal(resp.Data, &entries); err != nil {
+		return out, okx.NewError(okx.ErrorKindUnknown, "", "ws trading.CancelAllAfter: parse", err)
+	}
+	if len(entries) == 0 {
+		return out, nil
+	}
+	if entries[0].TriggerTime != "" {
+		out.TriggerTimeMs, _ = parseInt64Lossy(entries[0].TriggerTime)
+	}
+	if entries[0].Ts != "" {
+		out.TsMs, _ = parseInt64Lossy(entries[0].Ts)
+	}
+	return out, nil
+}
+
+/*
 doOp — общая обёртка над ws.Conn.SendOp: формирует OpRequest, ждёт reply,
 проверяет top-level code, парсит Data в массив orderActionResponseEntry.
 Disconnect-reply (Code="disconnected" от failAllPending) конвертируется в

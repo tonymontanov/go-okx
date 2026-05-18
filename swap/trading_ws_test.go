@@ -199,6 +199,41 @@ func TestWS_MassCancel_HappyPath(t *testing.T) {
 	}
 }
 
+func TestWS_CancelAllAfter_HappyPath(t *testing.T) {
+	var seenArgs string
+	var url string
+	var srv *httptest.Server
+	url, srv = startMockWS(t, mockWSScript{
+		onOp: func(id, op, args string) string {
+			if op != "cancel-all-after" {
+				return `{"id":"` + id + `","op":"` + op + `","code":"60012","msg":"unexpected op"}`
+			}
+			seenArgs = args
+			return `{"id":"` + id + `","op":"` + op + `","code":"0","msg":"","data":[{"triggerTime":"1700000010000","ts":"1700000000000"}]}`
+		},
+	})
+	defer srv.Close()
+
+	var sc *Client = newSwapWithMockWS(t, url)
+	var ctx context.Context
+	var cancel context.CancelFunc
+	ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	var res types.CancelAllAfterResult
+	var err error
+	res, err = sc.Trading().WS().CancelAllAfter(ctx, 60*time.Second)
+	if err != nil {
+		t.Fatalf("CancelAllAfter: %v", err)
+	}
+	if res.TriggerTimeMs != 1700000010000 || res.TsMs != 1700000000000 {
+		t.Fatalf("unexpected response: %+v", res)
+	}
+	if !strings.Contains(seenArgs, `"timeOut":"60"`) {
+		t.Fatalf("expected timeOut=60 in args, got %q", seenArgs)
+	}
+}
+
 func TestWS_CreateBatchOrders_PartialReject(t *testing.T) {
 	var url string
 	var srv *httptest.Server

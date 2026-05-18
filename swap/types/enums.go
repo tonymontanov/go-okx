@@ -143,3 +143,7 @@ const (
 // ParseOrderState — реэкспорт функции из общего пакета. Вызывать как
 // swaptypes.ParseOrderState(s) — поведение не изменилось.
 var ParseOrderState = commontypes.ParseOrderState
+
+// CancelAllAfterResult — ответ POST /api/v5/trade/cancel-all-after.
+// См. commontypes.CancelAllAfterResult и types/cancel-all-after.go.
+type CancelAllAfterResult = commontypes.CancelAllAfterResult

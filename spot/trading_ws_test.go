@@ -344,6 +344,41 @@ func TestWS_CorrelationID(t *testing.T) {
 	}
 }
 
+func TestWS_CancelAllAfter_HappyPath(t *testing.T) {
+	var seenArgs string
+	var url string
+	var srv *httptest.Server
+	url, srv = startMockWS(t, mockWSScript{
+		onOp: func(id, op, args string) string {
+			if op != "cancel-all-after" {
+				return `{"id":"` + id + `","op":"` + op + `","code":"60012","msg":"unexpected op"}`
+			}
+			seenArgs = args
+			return `{"id":"` + id + `","op":"` + op + `","code":"0","msg":"","data":[{"triggerTime":"1700000010000","ts":"1700000000000"}]}`
+		},
+	})
+	defer srv.Close()
+
+	var sc *Client = newSpotWithMockWS(t, url)
+	var ctx context.Context
+	var cancel context.CancelFunc
+	ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	var res types.CancelAllAfterResult
+	var err error
+	res, err = sc.Trading().WS().CancelAllAfter(ctx, 30*time.Second)
+	if err != nil {
+		t.Fatalf("CancelAllAfter: %v", err)
+	}
+	if res.TriggerTimeMs != 1700000010000 || res.TsMs != 1700000000000 {
+		t.Fatalf("unexpected response: %+v", res)
+	}
+	if !strings.Contains(seenArgs, `"timeOut":"30"`) {
+		t.Fatalf("expected timeOut=30 in args, got %q", seenArgs)
+	}
+}
+
 // asOkxError — local helper для безопасного type-assert через errors.As.
 func asOkxError(err error, target **okx.Error) bool {
 	var oerr *okx.Error
