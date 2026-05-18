@@ -147,3 +147,6 @@ var ParseOrderState = commontypes.ParseOrderState
 // CancelAllAfterResult — ответ POST /api/v5/trade/cancel-all-after.
 // См. commontypes.CancelAllAfterResult и types/cancel-all-after.go.
 type CancelAllAfterResult = commontypes.CancelAllAfterResult
+
+// Fill — одно исполнение ордера. См. commontypes.Fill и types/fill.go.
+type Fill = commontypes.Fill

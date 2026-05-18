@@ -526,3 +526,116 @@ func (s *StreamClient) WatchOpenOrders(
 	}
 	return nil
 }
+
+// rawFillPush — push-данные канала fills.
+type rawFillPush struct {
+	InstType    string `json:"instType"`
+	InstID      string `json:"instId"`
+	TradeID     string `json:"tradeId"`
+	OrdID       string `json:"ordId"`
+	ClOrdID     string `json:"clOrdId"`
+	BillID      string `json:"billId"`
+	Tag         string `json:"tag"`
+	FillPx      string `json:"fillPx"`
+	FillSz      string `json:"fillSz"`
+	FillPxVol   string `json:"fillPxVol"`
+	FillPxUsd   string `json:"fillPxUsd"`
+	FillMarkVol string `json:"fillMarkVol"`
+	FillFwdPx   string `json:"fillFwdPx"`
+	FillMarkPx  string `json:"fillMarkPx"`
+	Side        string `json:"side"`
+	PosSide     string `json:"posSide"`
+	ExecType    string `json:"execType"`
+	FeeCcy      string `json:"feeCcy"`
+	Fee         string `json:"fee"`
+	FillPnl     string `json:"fillPnl"`
+	FillTime    string `json:"fillTime"`
+	Ts          string `json:"ts"`
+}
+
+/*
+WatchFills — приватный канал "fills" с фильтром InstType="SPOT". Шлёт
+push на каждое исполнение (полное или частичное) с минимальной
+для биржи задержкой — НИЖЕ, чем у канала "orders", где исполнения
+видны как часть state-machine ордера.
+
+ТРЕБОВАНИЯ OKX: VIP5+ или Market Maker. Иначе сервер ответит 60018.
+
+ВЫИГРЫШ:
+  - меньше латентность fill-event'а vs парсинга "orders";
+  - нет шумных промежуточных state-update'ов (live → live amend → ...);
+  - содержит fillPnl и execType (T/M) в готовом виде — не нужно
+    выводить через дополнительный round-trip GetFill.
+
+ПАРАМЕТРЫ:
+  - instID опционален: пустой = все SPOT-инструменты по аккаунту;
+  - в одном push'е может быть несколько fill'ов — handler вызывается
+    по одному разу на каждый.
+*/
+func (s *StreamClient) WatchFills(
+	ctx context.Context, instID string,
+	handler func(types.Fill), errHandler func(error),
+) error {
+	if !s.c.signerEnabled() {
+		var err error = okx.NewError(okx.ErrorKindAuth, "", "stream.WatchFills: credentials required", nil)
+		if errHandler != nil {
+			errHandler(err)
+		}
+		return err
+	}
+	var sub *ws.Subscription = &ws.Subscription{
+		Channel:  "fills",
+		InstType: "SPOT",
+		InstID:   instID,
+		Handler: func(_ string, payload []byte) {
+			var pushes []rawFillPush
+			if err := codec.Unmarshal(payload, &pushes); err != nil {
+				s.c.logger().Warn("stream.WatchFills: parse", okx.Err(err))
+				return
+			}
+			var i int
+			for i = 0; i < len(pushes); i++ {
+				if instID != "" && pushes[i].InstID != instID {
+					continue
+				}
+				handler(convertFill(pushes[i]))
+			}
+		},
+	}
+	s.c.privateConn().Start(ctx)
+	if err := s.c.privateConn().Subscribe(sub); err != nil {
+		if errHandler != nil {
+			errHandler(err)
+		}
+		return err
+	}
+	return nil
+}
+
+// convertFill маппит raw push fills в типизированный Fill.
+func convertFill(p rawFillPush) types.Fill {
+	var f types.Fill
+	f.InstType = types.InstType(p.InstType)
+	f.InstID = p.InstID
+	f.TradeID = p.TradeID
+	f.OrdID = p.OrdID
+	f.ClOrdID = p.ClOrdID
+	f.BillID = p.BillID
+	f.Tag = p.Tag
+	f.FillPx, _ = codec.ParseDecimal(p.FillPx)
+	f.FillSz, _ = codec.ParseDecimal(p.FillSz)
+	f.FillPxVol, _ = codec.ParseDecimal(p.FillPxVol)
+	f.FillPxUsd, _ = codec.ParseDecimal(p.FillPxUsd)
+	f.FillMarkVol, _ = codec.ParseDecimal(p.FillMarkVol)
+	f.FillFwdPx, _ = codec.ParseDecimal(p.FillFwdPx)
+	f.FillMarkPx, _ = codec.ParseDecimal(p.FillMarkPx)
+	f.Side = types.SideType(p.Side)
+	f.PosSide = p.PosSide
+	f.ExecType = p.ExecType
+	f.FeeCcy = p.FeeCcy
+	f.Fee, _ = codec.ParseDecimal(p.Fee)
+	f.FillPnl, _ = codec.ParseDecimal(p.FillPnl)
+	f.FillTime, _ = codec.ParseInt64(p.FillTime)
+	f.Ts, _ = codec.ParseInt64(p.Ts)
+	return f
+}
