@@ -84,6 +84,12 @@ type serverScript struct {
 	onLogin func(arg loginArg) string
 	// recordReceived накапливает все принятые от клиента сообщения.
 	recordReceived func(message string)
+	// onOp вызывается при любой op-команде с id (order/cancel-order/amend-order/
+	// batch-orders/cancel-batch-orders/amend-batch-orders/mass-cancel и т.д.).
+	// Возвращает список JSON-сообщений, которые сервер шлёт обратно. Если
+	// функция nil — сервер тихо игнорирует команду (используется для тестов
+	// таймаутов).
+	onOp func(id, op string, raw string) []string
 }
 
 // startWsServer запускает мок-сервер OKX-style на свободном порту.
@@ -123,6 +129,20 @@ func startWsServer(t *testing.T, script serverScript) (string, *httptest.Server)
 				_ = c.WriteMessage(websocket.TextMessage, []byte("pong"))
 				continue
 			}
+			// сперва пробуем как op-request с id (WS Order API):
+			// у него есть и id, и op, а у subscribe/unsubscribe/login id нет.
+			var idProbe opRequestMessage
+			if err = codec.Unmarshal(message, &idProbe); err == nil && idProbe.ID != "" && idProbe.Op != "" {
+				if script.onOp != nil {
+					var replies []string = script.onOp(idProbe.ID, idProbe.Op, s)
+					var i int
+					for i = 0; i < len(replies); i++ {
+						_ = c.WriteMessage(websocket.TextMessage, []byte(replies[i]))
+					}
+				}
+				continue
+			}
+
 			// разбираем как opRequest
 			var req opRequest
 			if err = codec.Unmarshal(message, &req); err == nil && req.Op != "" {
