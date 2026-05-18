@@ -663,6 +663,96 @@ func TestContract_CancelAllAfter_Disarm(t *testing.T) {
 	}
 }
 
+func TestContract_GetFills(t *testing.T) {
+	var fixture string = `{
+		"code":"0","msg":"",
+		"data":[
+			{"instType":"SPOT","instId":"BTC-USDT","tradeId":"t-1","ordId":"o-1","clOrdId":"c-1","billId":"b-1","tag":"","fillPx":"60000","fillSz":"0.5","side":"buy","posSide":"","execType":"T","feeCcy":"USDT","fee":"-0.06","fillPnl":"0","fillTime":"1700000000000","ts":"1700000000050"},
+			{"instType":"SPOT","instId":"BTC-USDT","tradeId":"t-2","ordId":"o-1","clOrdId":"c-1","billId":"b-2","tag":"","fillPx":"60010","fillSz":"0.5","side":"buy","posSide":"","execType":"M","feeCcy":"USDT","fee":"0.01","fillPnl":"0","fillTime":"1700000001000","ts":"1700000001050"}
+		]
+	}`
+	var _, client = mockOKX(t, map[string]string{
+		"/api/v5/trade/fills": fixture,
+	})
+	var fills []types.Fill
+	var err error
+	fills, err = spotOf(client).Trading().GetFills(context.Background(), types.FillsQuery{
+		InstID: "BTC-USDT",
+		Limit:  10,
+	})
+	if err != nil {
+		t.Fatalf("GetFills: %v", err)
+	}
+	if len(fills) != 2 {
+		t.Fatalf("expected 2 fills, got %d", len(fills))
+	}
+	if fills[0].TradeID != "t-1" || !fills[0].FillPx.Equal(mustDec("60000")) {
+		t.Fatalf("fills[0] mismatch: %+v", fills[0])
+	}
+	if fills[1].ExecType != "M" {
+		t.Fatalf("fills[1].ExecType mismatch: %q", fills[1].ExecType)
+	}
+}
+
+func TestContract_GetFillsHistory(t *testing.T) {
+	var fixture string = `{
+		"code":"0","msg":"",
+		"data":[{"instType":"SPOT","instId":"BTC-USDT","tradeId":"t-99","ordId":"o-99","clOrdId":"","billId":"b-99","tag":"","fillPx":"50000","fillSz":"0.1","side":"sell","posSide":"","execType":"M","feeCcy":"USDT","fee":"0.005","fillPnl":"0","fillTime":"1690000000000","ts":"1690000000010"}]
+	}`
+	var _, client = mockOKX(t, map[string]string{
+		"/api/v5/trade/fills-history": fixture,
+	})
+	var fills []types.Fill
+	var err error
+	fills, err = spotOf(client).Trading().GetFillsHistory(context.Background(), types.FillsQuery{
+		InstID:  "BTC-USDT",
+		BeginMs: 1689000000000,
+		EndMs:   1690000000000,
+	})
+	if err != nil {
+		t.Fatalf("GetFillsHistory: %v", err)
+	}
+	if len(fills) != 1 {
+		t.Fatalf("expected 1 fill, got %d", len(fills))
+	}
+	if fills[0].TradeID != "t-99" {
+		t.Fatalf("TradeID mismatch: %q", fills[0].TradeID)
+	}
+}
+
+func TestContract_GetFill_TradeIDFilter(t *testing.T) {
+	var fixture string = `{
+		"code":"0","msg":"",
+		"data":[
+			{"instType":"SPOT","instId":"BTC-USDT","tradeId":"t-1","ordId":"o-1","clOrdId":"","billId":"b-1","tag":"","fillPx":"60000","fillSz":"0.3","side":"buy","posSide":"","execType":"T","feeCcy":"USDT","fee":"-0.04","fillPnl":"0","fillTime":"1700000000000","ts":"1700000000050"},
+			{"instType":"SPOT","instId":"BTC-USDT","tradeId":"t-2","ordId":"o-1","clOrdId":"","billId":"b-2","tag":"","fillPx":"60010","fillSz":"0.7","side":"buy","posSide":"","execType":"T","feeCcy":"USDT","fee":"-0.09","fillPnl":"0","fillTime":"1700000001000","ts":"1700000001050"}
+		]
+	}`
+	var _, client = mockOKX(t, map[string]string{
+		"/api/v5/trade/fills": fixture,
+	})
+	var fills []types.Fill
+	var err error
+	fills, err = spotOf(client).Trading().GetFill(context.Background(), "BTC-USDT", "o-1", "t-2")
+	if err != nil {
+		t.Fatalf("GetFill: %v", err)
+	}
+	if len(fills) != 1 {
+		t.Fatalf("expected 1 fill after tradeID filter, got %d", len(fills))
+	}
+	if fills[0].TradeID != "t-2" {
+		t.Fatalf("expected tradeId=t-2, got %q", fills[0].TradeID)
+	}
+}
+
+func TestContract_GetFill_EmptyOrdID(t *testing.T) {
+	var _, client = mockOKX(t, map[string]string{})
+	var _, err = spotOf(client).Trading().GetFill(context.Background(), "BTC-USDT", "", "")
+	if err == nil {
+		t.Fatalf("expected validation error for empty OrdID")
+	}
+}
+
 func TestContract_NetworkTimeout(t *testing.T) {
 	var srv *httptest.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(200 * time.Millisecond)

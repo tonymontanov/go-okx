@@ -105,6 +105,9 @@ type CancelAllAfterResult = commontypes.CancelAllAfterResult
 // Fill — одно исполнение ордера. См. commontypes.Fill и types/fill.go.
 type Fill = commontypes.Fill
 
+// FillsQuery — параметры выборки fills (REST). См. commontypes.FillsQuery.
+type FillsQuery = commontypes.FillsQuery
+
 // Общие модели данных — orderbook level/snapshot, candles, agg trades.
 // Формат идентичен для spot и swap (REST/WS endpoints общие), поэтому
 // переиспользуем через алиасы на общий пакет.

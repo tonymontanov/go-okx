@@ -150,3 +150,6 @@ type CancelAllAfterResult = commontypes.CancelAllAfterResult
 
 // Fill — одно исполнение ордера. См. commontypes.Fill и types/fill.go.
 type Fill = commontypes.Fill
+
+// FillsQuery — параметры выборки fills (REST). См. commontypes.FillsQuery.
+type FillsQuery = commontypes.FillsQuery

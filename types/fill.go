@@ -88,3 +88,24 @@ type Fill struct {
 
 // Fills — слайс fills.
 type Fills []Fill
+
+// FillsQuery — параметры выборки для GET /api/v5/trade/fills и
+// /api/v5/trade/fills-history. Все поля опциональны.
+type FillsQuery struct {
+	// InstID — фильтр по инструменту.
+	InstID string
+	// OrdID — фильтр по конкретному ордеру. Полезно для convenience-метода
+	// GetFill, когда нужны исполнения одного ордера.
+	OrdID string
+	// After — пагинация: вернуть записи СТАРШЕ указанного billId (то есть
+	// «следующая страница назад во времени»).
+	After string
+	// Before — пагинация: вернуть записи МЛАДШЕ указанного billId («новее»).
+	Before string
+	// BeginMs — нижняя граница времени fill'а в мс (включительно).
+	BeginMs int64
+	// EndMs — верхняя граница времени fill'а в мс (включительно).
+	EndMs int64
+	// Limit — макс. записей в ответе. OKX cap = 100; 0 ⇒ server default.
+	Limit int
+}
