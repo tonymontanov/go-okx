@@ -1,22 +1,21 @@
 /*
-ФАЙЛ: swap/market.go
+FILE: swap/market.go
 
-ОПИСАНИЕ:
-Доменный саб-клиент рыночных данных SWAP:
+DESCRIPTION:
+Domain sub-client for SWAP market data:
   - GetSymbolInfo         : GET /api/v5/public/instruments?instType=SWAP&instId=...
   - GetOrderBook          : GET /api/v5/market/books?instId=...&sz=...
   - GetHistoricalCandles  : GET /api/v5/market/candles + history-candles
-    (используем history-candles когда нужен большой исторический объём
-    и обычные candles когда нужен «последний» хвост; в v1 — history-candles
-    как универсальный путь, как в Binance-коннекторе).
+    (history-candles is used when a large historical volume is needed;
+    regular candles for the "recent tail"; in v1 — history-candles as the
+    universal path, matching the Binance connector).
 
-ОСОБЕННОСТИ:
-  - Sub-minute таймфреймы (1s/15s/30s) в REST OKX не поддерживаются — для них
-    SDK возвращает ErrorKindInvalidRequest без обращения к бирже (согласовано
-    с поведением Binance-коннектора в core).
-  - У OKX свечи возвращаются в обратном хронологическом порядке (от свежей
-    к старой). Мы сохраняем этот порядок — это совпадает с core, где сортировка
-    идёт `OpenTime > OpenTime`.
+SPECIFICS:
+  - Sub-minute timeframes (1s/15s/30s) are not supported by the OKX REST API —
+    the SDK returns ErrorKindInvalidRequest without contacting the exchange
+    (consistent with the Binance connector behaviour in core).
+  - OKX returns candles in reverse chronological order (newest first).
+    We preserve this order — it matches core where sorting is `OpenTime > OpenTime`.
 */
 
 package swap
@@ -33,7 +32,7 @@ import (
 	"github.com/tonymontanov/go-okx/v2/swap/types"
 )
 
-// MarketDataClient — саб-клиент рыночных данных.
+// MarketDataClient — market data sub-client.
 type MarketDataClient struct {
 	c *Client
 }
@@ -42,7 +41,7 @@ func newMarketDataClient(c *Client) *MarketDataClient {
 	return &MarketDataClient{c: c}
 }
 
-// rawInstrumentEntry — сырой ответ /public/instruments (нужные поля).
+// rawInstrumentEntry — raw response from /public/instruments (relevant fields).
 type rawInstrumentEntry struct {
 	InstID    string `json:"instId"`
 	BaseCcy   string `json:"baseCcy"`
@@ -58,8 +57,8 @@ type rawInstrumentEntry struct {
 }
 
 /*
-GetSymbolInfo возвращает спецификацию инструмента SWAP. Если такого
-инструмента нет — возвращается ErrorKindInvalidRequest с понятным сообщением.
+GetSymbolInfo returns the SWAP instrument specification. If the instrument does
+not exist, ErrorKindInvalidRequest is returned with a clear message.
 */
 func (m *MarketDataClient) GetSymbolInfo(ctx context.Context, instID string) (types.SymbolInfo, error) {
 	var info types.SymbolInfo
@@ -113,8 +112,8 @@ func (m *MarketDataClient) GetSymbolInfo(ctx context.Context, instID string) (ty
 	return info, nil
 }
 
-// decimalScale возвращает количество знаков после точки в строке "0.0001" → 4.
-// Для строк вида "1" возвращает 0; для пустой строки — 0.
+// decimalScale returns the number of decimal places in a string "0.0001" → 4.
+// For strings like "1" returns 0; for an empty string — 0.
 func decimalScale(s string) int {
 	var dotIdx int = -1
 	var i int
@@ -128,15 +127,15 @@ func decimalScale(s string) int {
 		return 0
 	}
 	var scale int = len(s) - dotIdx - 1
-	// убираем trailing zeros (например "0.10" → 1, не 2)
+	// strip trailing zeros (e.g. "0.10" → 1, not 2)
 	for scale > 0 && s[dotIdx+scale] == '0' {
 		scale--
 	}
 	return scale
 }
 
-// rawOrderBookResponse — сырой ответ /market/books. OKX возвращает массив
-// из одного элемента (для совместимости с массовыми эндпоинтами).
+// rawOrderBookResponse — raw response from /market/books. OKX returns an array
+// of one element (for compatibility with bulk endpoints).
 type rawOrderBookResponse struct {
 	Asks [][]string `json:"asks"`
 	Bids [][]string `json:"bids"`
@@ -145,9 +144,9 @@ type rawOrderBookResponse struct {
 }
 
 /*
-GetOrderBook возвращает снапшот стакана. depth ∈ {1, 5, 10, 20, 50, 100, 400}
-по спецификации OKX; SDK не валидирует значение — OKX откажет с понятной
-ошибкой, если значение нелегально.
+GetOrderBook returns an order book snapshot. depth ∈ {1, 5, 10, 20, 50, 100, 400}
+per OKX specification; the SDK does not validate the value — OKX will reject it
+with a clear error if the value is invalid.
 */
 func (m *MarketDataClient) GetOrderBook(ctx context.Context, instID string, depth int) (types.OrderBookSnapshot, error) {
 	var snap types.OrderBookSnapshot
@@ -197,8 +196,8 @@ func (m *MarketDataClient) GetOrderBook(ctx context.Context, instID string, dept
 	return snap, nil
 }
 
-// parseLevels превращает [][]string → []OrderBookLevel. Формат OKX:
-// [price, size, depreciatedField, ordersCount]. Нас интересуют первые две позиции.
+// parseLevels converts [][]string → []OrderBookLevel. OKX format:
+// [price, size, depreciatedField, ordersCount]. Only the first two positions are used.
 func parseLevels(raw [][]string) []types.OrderBookLevel {
 	var out []types.OrderBookLevel = make([]types.OrderBookLevel, 0, len(raw))
 	var i int
@@ -222,9 +221,9 @@ func parseLevels(raw [][]string) []types.OrderBookLevel {
 }
 
 /*
-GetHistoricalCandles — исторические свечи. length ∈ [1..300]. Sub-minute
-таймфреймы (1s/15s/30s) приведут к ErrorKindInvalidRequest без обращения к
-бирже, см. ответы на ТЗ.
+GetHistoricalCandles — historical candles. length ∈ [1..300]. Sub-minute
+timeframes (1s/15s/30s) return ErrorKindInvalidRequest without contacting the
+exchange.
 */
 func (m *MarketDataClient) GetHistoricalCandles(
 	ctx context.Context, instID string, tf types.Timeframe, length int,
@@ -291,7 +290,7 @@ func (m *MarketDataClient) GetHistoricalCandles(
 	return candles, nil
 }
 
-// timeframeToOKX маппит SDK-Timeframe в строку bar OKX.
+// timeframeToOKX maps SDK Timeframe to an OKX bar string.
 func timeframeToOKX(tf types.Timeframe) (string, error) {
 	switch tf {
 	case types.Timeframe1s, types.Timeframe15s, types.Timeframe30s:

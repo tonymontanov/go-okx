@@ -1,13 +1,12 @@
 /*
-ФАЙЛ: swap/stream_account_test.go
+FILE: swap/stream_account_test.go
 
-ОПИСАНИЕ:
-Интеграционный тест WatchAccount: поднимаем локальный mock-WS-сервер,
-имитирующий приватный endpoint OKX (login + push канала account), и проверяем,
-что:
-  - SDK успешно делает login и subscribe;
-  - входящий account-push парсится в types.Balance с корректными числами;
-  - callback вызывается прозрачно (без знания о reconnect/login).
+DESCRIPTION:
+Integration test for WatchAccount: starts a local mock WS server that
+simulates the OKX private endpoint (login + account channel push), and verifies:
+  - the SDK successfully performs login and subscribe;
+  - the incoming account push is parsed into types.Balance with correct numbers;
+  - the callback is called transparently (without knowledge of reconnect/login).
 */
 
 package swap

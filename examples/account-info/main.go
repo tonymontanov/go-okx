@@ -1,18 +1,18 @@
 /*
-ФАЙЛ: examples/account-info/main.go
+FILE: examples/account-info/main.go
 
-ОПИСАНИЕ:
-Read-only smoke-test приватных REST-эндпоинтов. НЕ ставит ордера, НЕ изменяет
-состояние аккаунта. Полезен для первой проверки, что ключи валидны и SDK
-правильно подписывает приватные запросы.
+DESCRIPTION:
+Read-only smoke-test of private REST endpoints. Does NOT place orders, does NOT
+modify account state. Useful for an initial check that the keys are valid and
+the SDK signs private requests correctly.
 
-ПОКРЫТИЕ:
+COVERAGE:
   - swap.Account().GetSymbolPosition(instId)
   - swap.Account().GetPositions(instId)
   - swap.Account().GetOpenOrders(instId)
-  - swap.MarketData().GetSymbolInfo(instId)  (public, для подсветки спецификации)
+  - swap.MarketData().GetSymbolInfo(instId)  (public, for instrument spec)
 
-ЗАПУСК:
+RUN:
     ./scripts/run.sh ./examples/account-info
 */
 
@@ -65,13 +65,13 @@ func main() {
 
 	fmt.Printf("=== Account info for %s ===\n\n", instID)
 
-	// 1. Symbol info — публичный вызов, без подписи.
+	// 1. Symbol info — public call, no signing.
 	dumpSymbolInfo(ctx, swap, instID)
 
 	// 2. Position.
 	dumpPosition(ctx, swap, instID)
 
-	// 3. Открытые ордера.
+	// 3. Open orders.
 	dumpOpenOrders(ctx, swap, instID)
 }
 

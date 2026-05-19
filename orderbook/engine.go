@@ -1,49 +1,50 @@
 /*
-ФАЙЛ: orderbook/engine.go
+FILE: orderbook/engine.go
 
-ОПИСАНИЕ:
-Файл engine.go реализует движок локального стакана для OKX. Источник истины —
-WebSocket-канал `books` (snapshot + delta), валидируется по `seqId/prevSeqId`
-и CRC32-checksum'у топ-25 уровней. Это «нативная» защита OKX от пропуска
-обновлений; помимо неё есть собственно последовательность seqId, как в Binance.
+DESCRIPTION:
+engine.go implements a local order book engine for OKX. The source of truth is
+the WebSocket `books` channel (snapshot + delta), validated by seqId/prevSeqId
+and the CRC32 checksum of the top-25 levels. This is OKX's native protection
+against missed updates; in addition there is the seqId sequence itself, as in
+Binance.
 
-ОСНОВНЫЕ СУЩНОСТИ:
-  - Engine             — инстанс на один инструмент.
-  - Update             — структура одного дельта-обновления (action=update).
-  - Snapshot           — структура снапшота (action=snapshot, либо REST-snapshot).
-  - GapKind            — категория обнаруженного разрыва (для resync-политик).
+MAIN ENTITIES:
+  - Engine             — one instance per instrument.
+  - Update             — structure of one delta update (action=update).
+  - Snapshot           — structure of a snapshot (action=snapshot or REST snapshot).
+  - GapKind            — category of the detected gap (for resync policies).
 
-АЛГОРИТМ:
-  1. ApplySnapshot инициализирует локальные срезы bid/ask + индекс цена→уровень.
-  2. ApplyUpdate проверяет prevSeqId == lastSeqId; если не совпадает —
-     возвращается GapDetected, движок переводится в state "needs resync".
-  3. После применения апдейта сравнивается CRC32 топ-25 уровней с
-     присланным checksum'ом; mismatch ⇒ GapDetected (checksum mismatch).
-  4. Резервная проверка: snapshot всегда сбрасывает state и сравнивает checksum
-     (если приехал).
+ALGORITHM:
+  1. ApplySnapshot initializes local bid/ask slices + price→level index.
+  2. ApplyUpdate checks prevSeqId == lastSeqId; if they differ —
+     returns GapDetected and puts the engine into "needs resync" state.
+  3. After applying the update, the CRC32 of the top-25 levels is compared
+     with the received checksum; mismatch ⇒ GapDetected (checksum mismatch).
+  4. Fallback check: a snapshot always resets state and compares checksum
+     (if received).
 
-ФОРМАТ CRC32 (по документации OKX):
-  - Топ-25 уровней с каждой стороны (если меньше, берём столько, сколько есть).
-  - Строка вида "bid0_price:bid0_size:ask0_price:ask0_size:bid1_price:...".
-  - При меньшем количестве уровней с одной стороны — пары другой стороны
-    дописываются «как есть» без разделителей пустых пар.
-  - Hash: stdlib crc32.ChecksumIEEE → результат интерпретируется как int32
-    (signed!), это важно: OKX в JSON передаёт checksum как signed int32.
+CRC32 FORMAT (per OKX documentation):
+  - Top-25 levels on each side (fewer if less are available).
+  - String of the form "bid0_price:bid0_size:ask0_price:ask0_size:bid1_price:...".
+  - If one side has fewer levels — the pairs from the other side are appended
+    as-is without empty-pair separators.
+  - Hash: stdlib crc32.ChecksumIEEE → result interpreted as int32
+    (signed!), this is important: OKX sends checksum as signed int32 in JSON.
 
-ПРОИЗВОДИТЕЛЬНОСТЬ:
-  - Уровни хранятся в отсортированных слайсах + map[price]→index.
-  - При апдейте — бинарный поиск (sort.Search) O(log n), вставка/удаление
-    через copy. Для глубины <= 400 уровней (cfg.MaxDepth) это укладывается
-    в десятки наносекунд на апдейт.
-  - Для контрольной суммы используется sync.Pool из []byte-буферов, чтобы
-    не аллоцировать на каждом сообщении (CRC32 шлётся ~5x/sec на инструмент).
+PERFORMANCE:
+  - Levels are stored in sorted slices + map[price]→index.
+  - On update — binary search (sort.Search) O(log n), insertion/deletion
+    via copy. For depth <= 400 levels (cfg.MaxDepth) this fits in tens of
+    nanoseconds per update.
+  - For the checksum, a sync.Pool of []byte buffers is used to avoid
+    allocating on every message (CRC32 is sent ~5x/sec per instrument).
 
-ЗАВИСИМОСТИ:
-- hash/crc32: nativный CRC32 IEEE.
-- sort: бинарный поиск.
-- sync: Pool для буферов.
-- github.com/shopspring/decimal: цены и объёмы.
-- swap/types: переиспользуем тип OrderBookLevel.
+DEPENDENCIES:
+- hash/crc32: native CRC32 IEEE.
+- sort: binary search.
+- sync: Pool for buffers.
+- github.com/shopspring/decimal: prices and volumes.
+- swap/types: reuses the OrderBookLevel type.
 */
 
 package orderbook
@@ -58,29 +59,29 @@ import (
 	"github.com/tonymontanov/go-okx/v2/swap/types"
 )
 
-// SideKind — сторона стакана (для внутренних таблиц).
+// SideKind — order book side (for internal tables).
 type SideKind uint8
 
 const (
-	// SideBid — биды (упорядочены по убыванию цены).
+	// SideBid — bids (sorted in descending price order).
 	SideBid SideKind = iota
-	// SideAsk — аски (упорядочены по возрастанию цены).
+	// SideAsk — asks (sorted in ascending price order).
 	SideAsk
 )
 
-// GapKind — категория обнаруженного разрыва.
+// GapKind — category of the detected gap.
 type GapKind uint8
 
 const (
-	// GapNone — без разрыва, апдейт применился чисто.
+	// GapNone — no gap; the update applied cleanly.
 	GapNone GapKind = iota
-	// GapSequence — несовпадение prevSeqId с локальным lastSeqId.
+	// GapSequence — prevSeqId does not match the local lastSeqId.
 	GapSequence
-	// GapChecksum — несовпадение CRC32 после применения апдейта.
+	// GapChecksum — CRC32 mismatch after applying the update.
 	GapChecksum
 )
 
-// String — человекочитаемое имя для логов/метрик.
+// String — human-readable name for logs/metrics.
 func (g GapKind) String() string {
 	switch g {
 	case GapSequence:
@@ -92,21 +93,21 @@ func (g GapKind) String() string {
 	}
 }
 
-// Snapshot — снимок стакана для инициализации движка.
+// Snapshot — order book snapshot for engine initialization.
 type Snapshot struct {
 	InstID    string
 	Bids      []types.OrderBookLevel
 	Asks      []types.OrderBookLevel
 	SeqID     int64
 	PrevSeqID int64
-	Checksum  int32 // 0 если не пришёл
+	Checksum  int32 // 0 if not received
 	TsMs      int64
 }
 
-// Update — дельта-обновление стакана.
+// Update — delta order book update.
 type Update struct {
 	InstID    string
-	Bids      []types.OrderBookLevel // только меняющиеся уровни
+	Bids      []types.OrderBookLevel // changed levels only
 	Asks      []types.OrderBookLevel
 	SeqID     int64
 	PrevSeqID int64
@@ -114,7 +115,7 @@ type Update struct {
 	TsMs      int64
 }
 
-// ApplyResult — результат применения апдейта.
+// ApplyResult — result of applying an update.
 type ApplyResult struct {
 	Gap     GapKind
 	SeqID   int64
@@ -123,7 +124,7 @@ type ApplyResult struct {
 	AsksLen int
 }
 
-// Engine — движок стакана для одного инструмента.
+// Engine — order book engine for one instrument.
 type Engine struct {
 	instID         string
 	maxDepth       int
@@ -134,12 +135,12 @@ type Engine struct {
 	asks      []types.OrderBookLevel
 	lastSeqID int64
 	lastTsMs  int64
-	dirty     bool // если true — нужен resync (gap, checksum mismatch)
+	dirty     bool // if true — resync is needed (gap, checksum mismatch)
 }
 
-// NewEngine создаёт пустой движок. maxDepth ограничивает глубину локального
-// стакана (по умолчанию 400). checksumLevels — глубина CRC32 (всегда 25 по
-// спецификации OKX; параметризовано на случай изменений протокола).
+// NewEngine creates an empty engine. maxDepth limits the local order book depth
+// (default 400). checksumLevels is the CRC32 depth (always 25 per OKX spec;
+// parameterized in case the protocol changes).
 func NewEngine(instID string, maxDepth, checksumLevels int) *Engine {
 	if maxDepth <= 0 {
 		maxDepth = 400
@@ -156,18 +157,18 @@ func NewEngine(instID string, maxDepth, checksumLevels int) *Engine {
 	}
 }
 
-// InstID возвращает идентификатор инструмента.
+// InstID returns the instrument identifier.
 func (e *Engine) InstID() string { return e.instID }
 
-// IsDirty возвращает true, если движок требует resync (snapshot + ApplyUpdate
-// после очистки).
+// IsDirty returns true if the engine requires resync (snapshot + ApplyUpdate
+// after clearing).
 func (e *Engine) IsDirty() bool {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
 	return e.dirty
 }
 
-// LastSeqID возвращает последний применённый seqId (0 если ничего не применено).
+// LastSeqID returns the last applied seqId (0 if nothing has been applied).
 func (e *Engine) LastSeqID() int64 {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
@@ -175,10 +176,10 @@ func (e *Engine) LastSeqID() int64 {
 }
 
 /*
-ApplySnapshot заменяет локальный стакан данными снапшота. Если у снапшота
-есть Checksum != 0 — он сравнивается с CRC32 топ-25 локального стакана;
-mismatch возвращается как GapChecksum (но локальное состояние всё равно
-обновляется на snapshot — иначе при стабильном расхождении мы зависнем).
+ApplySnapshot replaces the local order book with snapshot data. If the snapshot
+has Checksum != 0 — it is compared against the CRC32 of the top-25 local levels;
+a mismatch is returned as GapChecksum (but the local state is still updated with
+the snapshot — otherwise we would hang on a persistent divergence).
 */
 func (e *Engine) ApplySnapshot(s Snapshot) ApplyResult {
 	e.mu.Lock()
@@ -208,16 +209,16 @@ func (e *Engine) ApplySnapshot(s Snapshot) ApplyResult {
 }
 
 /*
-ApplyUpdate применяет дельта-обновление к локальному стакану.
+ApplyUpdate applies a delta update to the local order book.
 
-Поведение:
-  - Если u.PrevSeqID != lastSeqID — возвращает GapSequence, ставит dirty=true,
-    локальное состояние НЕ модифицируется. Вызывающий код должен сделать
-    resync через REST snapshot или новую WS-подписку.
-  - Если консистентно — применяет апдейт; уровни size==0 удаляются.
-  - После применения, если u.Checksum != 0, считает CRC32 топ-25 и сравнивает
-    с присланным; mismatch ⇒ GapChecksum + dirty=true, но изменения уже
-    применены (как и в случае snapshot).
+Behavior:
+  - If u.PrevSeqID != lastSeqID — returns GapSequence, sets dirty=true,
+    local state is NOT modified. The caller must resync via REST snapshot
+    or a new WS subscription.
+  - If consistent — applies the update; levels with size==0 are removed.
+  - After applying, if u.Checksum != 0, computes CRC32 of the top-25 and
+    compares with the received value; mismatch ⇒ GapChecksum + dirty=true,
+    but the changes are already applied (same as for snapshot).
 */
 func (e *Engine) ApplyUpdate(u Update) ApplyResult {
 	e.mu.Lock()
@@ -257,7 +258,7 @@ func (e *Engine) ApplyUpdate(u Update) ApplyResult {
 	return res
 }
 
-// TopLevels возвращает копию топ-n уровней bid/ask. n <= 0 ⇒ берёт min(maxDepth, current).
+// TopLevels returns a copy of the top-n bid/ask levels. n <= 0 ⇒ takes min(maxDepth, current).
 func (e *Engine) TopLevels(n int) (bids, asks []types.OrderBookLevel) {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
@@ -279,8 +280,8 @@ func (e *Engine) TopLevels(n int) (bids, asks []types.OrderBookLevel) {
 	return bids, asks
 }
 
-// BestBidAsk возвращает первый уровень bid и ask. Пустые decimal.Decimal если
-// стороны пусты.
+// BestBidAsk returns the best (first) bid and ask level. Empty decimal.Decimal
+// if either side is empty.
 func (e *Engine) BestBidAsk() (bidPx, bidSz, askPx, askSz decimal.Decimal) {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
@@ -295,9 +296,8 @@ func (e *Engine) BestBidAsk() (bidPx, bidSz, askPx, askSz decimal.Decimal) {
 	return bidPx, bidSz, askPx, askSz
 }
 
-// MarkResynced сбрасывает флаг dirty и принимает новые seqId. Вызывается
-// потребителем после успешного resync (например, после получения свежего
-// snapshot).
+// MarkResynced clears the dirty flag and accepts new seqId values. Called by the
+// consumer after a successful resync (e.g. after receiving a fresh snapshot).
 func (e *Engine) MarkResynced(seqID int64, tsMs int64) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -306,26 +306,26 @@ func (e *Engine) MarkResynced(seqID int64, tsMs int64) {
 	e.dirty = false
 }
 
-// applyLevelLocked применяет один уровень. Размер 0 ⇒ удаление уровня.
-// e.mu должен быть захвачен на запись.
+// applyLevelLocked applies one level. Size 0 ⇒ remove the level.
+// e.mu must be held for writing.
 func (e *Engine) applyLevelLocked(side SideKind, lvl types.OrderBookLevel) {
 	var slice *[]types.OrderBookLevel
 	var less func(a, b decimal.Decimal) bool
 	if side == SideBid {
 		slice = &e.bids
-		// bids отсортированы по убыванию цены: pricesA > pricesB ⇒ A раньше B.
+		// bids are sorted in descending price order: priceA > priceB ⇒ A before B.
 		less = func(a, b decimal.Decimal) bool { return a.GreaterThan(b) }
 	} else {
 		slice = &e.asks
 		less = func(a, b decimal.Decimal) bool { return a.LessThan(b) }
 	}
 
-	// бинарный поиск позиции
+	// binary search for the position
 	var arr []types.OrderBookLevel = *slice
 	var idx int = sort.Search(len(arr), func(i int) bool {
-		// Возвращаем true для индексов "не раньше" заданной цены.
-		// less(arr[i], lvl) → true означает: arr[i] СТРОГО ПЕРЕД lvl
-		// ⇒ ищем первый i, для которого arr[i] не строго перед lvl.
+		// Return true for indices "not before" the given price.
+		// less(arr[i], lvl) → true means: arr[i] is STRICTLY BEFORE lvl
+		// ⇒ find the first i for which arr[i] is not strictly before lvl.
 		return !less(arr[i].Price, lvl.Price)
 	})
 
@@ -343,7 +343,7 @@ func (e *Engine) applyLevelLocked(side SideKind, lvl types.OrderBookLevel) {
 	*slice = arr
 }
 
-// trimLocked отрезает локальный стакан до maxDepth. e.mu должен быть захвачен.
+// trimLocked trims the local order book to maxDepth. e.mu must be held.
 func (e *Engine) trimLocked() {
 	if len(e.bids) > e.maxDepth {
 		e.bids = e.bids[:e.maxDepth]
@@ -353,9 +353,9 @@ func (e *Engine) trimLocked() {
 	}
 }
 
-// checksumLocked считает CRC32 IEEE топ-checksumLevels уровней в формате OKX:
-// "b0px:b0sz:a0px:a0sz:b1px:b1sz:a1px:a1sz:..." (пары с одной стороны
-// дописываются, если другая короче). Возвращает signed int32, как OKX.
+// checksumLocked computes the CRC32 IEEE of the top-checksumLevels levels in
+// OKX format: "b0px:b0sz:a0px:a0sz:b1px:b1sz:a1px:a1sz:..." (pairs from one
+// side are appended if the other is shorter). Returns signed int32, as OKX does.
 func (e *Engine) checksumLocked() int32 {
 	var bp *strings.Builder = buildersPool.Get().(*strings.Builder)
 	bp.Reset()
@@ -365,7 +365,7 @@ func (e *Engine) checksumLocked() int32 {
 	var nb int = len(e.bids)
 	var na int = len(e.asks)
 	if n > nb && n > na {
-		// возьмём минимум, но идём до max(nb, na)
+		// take minimum but iterate to max(nb, na)
 	}
 
 	var i int
@@ -398,13 +398,13 @@ func (e *Engine) checksumLocked() int32 {
 	return int32(sum)
 }
 
-// buildersPool — пул strings.Builder для CRC32 расчёта (избегаем аллокаций
-// под каждый апдейт).
+// buildersPool — pool of strings.Builder for CRC32 calculation (avoids
+// allocations per update).
 var buildersPool = sync.Pool{
 	New: func() any { return &strings.Builder{} },
 }
 
-// copyLevelsSortedDesc копирует уровни и сортирует по убыванию цены (биды).
+// copyLevelsSortedDesc copies levels and sorts them in descending price order (bids).
 func copyLevelsSortedDesc(src []types.OrderBookLevel, max int) []types.OrderBookLevel {
 	var out []types.OrderBookLevel = make([]types.OrderBookLevel, len(src))
 	copy(out, src)
@@ -417,7 +417,7 @@ func copyLevelsSortedDesc(src []types.OrderBookLevel, max int) []types.OrderBook
 	return out
 }
 
-// copyLevelsSortedAsc копирует уровни и сортирует по возрастанию цены (аски).
+// copyLevelsSortedAsc copies levels and sorts them in ascending price order (asks).
 func copyLevelsSortedAsc(src []types.OrderBookLevel, max int) []types.OrderBookLevel {
 	var out []types.OrderBookLevel = make([]types.OrderBookLevel, len(src))
 	copy(out, src)

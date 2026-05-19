@@ -1,16 +1,16 @@
 /*
-ФАЙЛ: swap/types/agg-trade.go
+FILE: swap/types/agg-trade.go
 
-ОПИСАНИЕ:
-AggTrade для SWAP-профиля. С момента выделения общего слоя — type-alias на
-commontypes.AggTrade. Документация — в types/agg-trade.go.
+DESCRIPTION:
+AggTrade for the SWAP profile. Since the common layer was extracted — a type alias
+for commontypes.AggTrade. Documentation is in types/agg-trade.go.
 
-ЕДИНИЦА Size для SWAP — контракты (умножать на ctVal для приведения в base).
+Size unit for SWAP — contracts (multiply by ctVal to convert to base).
 */
 
 package types
 
 import commontypes "github.com/tonymontanov/go-okx/v2/types"
 
-// AggTrade — одна сделка из потока trades. См. commontypes.AggTrade.
+// AggTrade — one trade from the trades stream. See commontypes.AggTrade.
 type AggTrade = commontypes.AggTrade

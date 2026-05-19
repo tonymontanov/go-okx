@@ -1,26 +1,26 @@
 /*
-ФАЙЛ: types/quoted-spread-update.go
+FILE: types/quoted-spread-update.go
 
-ОПИСАНИЕ:
-Обновление best bid/ask (спред). Подаётся в callback подписки WatchSpread.
-Совпадает по смыслу с core/types.QuotedSpreadUpdate.
+DESCRIPTION:
+Best bid/ask update (spread). Delivered to the WatchSpread subscription callback.
+Semantically equivalent to core/types.QuotedSpreadUpdate.
 
-Формат канала bbo-tbt одинаков для spot и swap у OKX v5.
+The bbo-tbt channel format is identical for spot and swap in OKX v5.
 
-ПОЛЯ:
-  - InstID    — инструмент.
-  - BestBid   — лучшая цена покупки.
-  - BestBidSz — объём на лучшем биде.
-  - BestAsk   — лучшая цена продажи.
-  - BestAskSz — объём на лучшем аске.
-  - Ts        — таймштамп OKX (мс).
+FIELDS:
+  - InstID    — instrument.
+  - BestBid   — best buy price.
+  - BestBidSz — volume at the best bid.
+  - BestAsk   — best sell price.
+  - BestAskSz — volume at the best ask.
+  - Ts        — OKX timestamp (ms).
 */
 
 package types
 
 import "github.com/shopspring/decimal"
 
-// QuotedSpreadUpdate — обновление best bid/ask.
+// QuotedSpreadUpdate — best bid/ask update.
 type QuotedSpreadUpdate struct {
 	InstID    string
 	BestBid   decimal.Decimal

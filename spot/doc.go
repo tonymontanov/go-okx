@@ -1,52 +1,51 @@
 /*
-Package spot — SPOT-профиль SDK OKX v5.
+Package spot — SPOT profile of the OKX v5 SDK.
 
-Назначение: торговля и стримы рыночных данных по спот-инструментам OKX
-(instType=SPOT, instID вида "BTC-USDT"). Архитектурно зеркально пакету
-github.com/tonymontanov/go-okx/v2/swap — те же саб-клиенты, тот же транспорт,
-тот же стиль колбэков для WS.
+Purpose: trading and market-data streams for OKX spot instruments
+(instType=SPOT, instID of the form "BTC-USDT"). Architecturally mirrors the
+github.com/tonymontanov/go-okx/v2/swap package — same sub-clients, same transport,
+same WS callback style.
 
-# Подключение
+# Registration
 
-Чтобы использовать spot через корневой okx.Client, достаточно blank-import:
+To use spot via the root okx.Client, a blank-import is sufficient:
 
 	import (
 	    okx "github.com/tonymontanov/go-okx/v2"
 	    "github.com/tonymontanov/go-okx/v2/spot"
-	    _ "github.com/tonymontanov/go-okx/v2/spot" // регистрация фабрики в окх
+	    _ "github.com/tonymontanov/go-okx/v2/spot" // registers the factory in okx
 	)
 
 	client, _ := okx.NewClient(cfg)
 	spotClient := client.Spot().(*spot.Client)
 
-# Что отличается от swap
+# Differences from swap
 
-  - Нет понятия "контракт": все размеры (sz) в БАЗОВОЙ валюте. Конверсия
-    base↔contracts здесь не нужна.
-  - Нет hedge-режима (PosSide, ReduceOnly): на cash-споте можно только
-    купить и продать, нельзя шортить.
-  - SymbolInfo не содержит CtVal/CtMult.
-  - tdMode по умолчанию = "cash" (для cash trading); для spot margin —
-    выставляйте TdMode явно (TdModeCross/TdModeIsolated).
-  - На market BUY OKX по умолчанию считает sz в КОТИРОВОЧНОЙ валюте
-    (USDT для BTC-USDT). Чтобы купить точно N единиц базовой валюты,
-    задавайте CreateOrderRequest.TgtCcy = TgtCcyBase.
+  - No concept of "contract": all sizes (sz) are in the BASE currency. No
+    base↔contracts conversion is needed.
+  - No hedge mode (PosSide, ReduceOnly): on cash spot you can only buy and sell;
+    shorting is not possible.
+  - SymbolInfo does not contain CtVal/CtMult.
+  - tdMode defaults to "cash" (for cash trading); for spot margin, set TdMode
+    explicitly (TdModeCross/TdModeIsolated).
+  - For a market BUY, OKX interprets sz in the QUOTE currency by default
+    (USDT for BTC-USDT). To buy exactly N units of the base currency, set
+    CreateOrderRequest.TgtCcy = TgtCcyBase.
 
-# Что общее с swap
+# Shared with swap
 
-  - Транспорт REST/WS (internal/rest, internal/ws) — переиспользуется как есть.
-  - Unified-account: один баланс /api/v5/account/balance на spot + swap.
-    Тип Balance переиспользуется через алиас (spot/types/aliases.go).
-  - Enum'ы протокола: SideType, OrderType, TimeInForceType, InstType,
+  - REST/WS transport (internal/rest, internal/ws) — reused as-is.
+  - Unified-account: a single balance endpoint /api/v5/account/balance covers
+    spot + swap. The Balance type is reused via an alias (spot/types/aliases.go).
+  - Protocol enums: SideType, OrderType, TimeInForceType, InstType,
     OrderState, OrderBookLevel, AggTrade, Candle, Timeframe, QuotedSpreadUpdate —
-    тоже реэкспортированы как алиасы на swap/types, чтобы код был
-    совместим без приведений.
+    also re-exported as aliases of swap/types so that code is compatible without casts.
 
-# Margin trading на споте
+# Margin trading on spot
 
-В текущей версии SDK поддержан только cash-режим. Поля TdMode, Ccy в
-CreateOrderRequest объявлены и проходят в REST как есть, но отдельных
-helper-методов для маржинального шорта/займа НЕТ. Добавим в следующих
-версиях по реальной потребности.
+The current SDK version supports cash mode only. The TdMode and Ccy fields in
+CreateOrderRequest are declared and passed to REST as-is, but there are NO separate
+helper methods for margin short/borrow. These will be added in future versions based
+on real demand.
 */
 package spot

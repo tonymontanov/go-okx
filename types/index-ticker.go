@@ -1,42 +1,42 @@
 /*
-ФАЙЛ: types/index-ticker.go
+FILE: types/index-ticker.go
 
-ОПИСАНИЕ:
-IndexTicker — индексная цена и 24h метрики по индексу OKX (например
-BTC-USDT-INDEX, ETH-USDT-INDEX). Используется как reference для perp,
-delivery и опционных продуктов.
+DESCRIPTION:
+IndexTicker — index price and 24h metrics for an OKX index (e.g.
+BTC-USDT-INDEX, ETH-USDT-INDEX). Used as a reference for perp, delivery,
+and options products.
 
-Маппится из:
+Mapped from:
   - GET /api/v5/market/index-tickers?quoteCcy=...|instId=...
   - WS public channel "index-tickers"
 
-В отличие от обычного тикера здесь нет ask/bid/last — индекс это
-расчётная величина, а не торгуемый инструмент.
+Unlike a regular ticker there is no ask/bid/last here — an index is a
+calculated value, not a tradable instrument.
 */
 
 package types
 
 import "github.com/shopspring/decimal"
 
-// IndexTicker — snapshot индексной цены.
+// IndexTicker — index price snapshot.
 type IndexTicker struct {
-	// InstID — идентификатор индекса (например "BTC-USDT-INDEX").
+	// InstID — index identifier (e.g. "BTC-USDT-INDEX").
 	InstID string
-	// IdxPx — текущая индексная цена (idxPx).
+	// IdxPx — current index price (idxPx).
 	IdxPx decimal.Decimal
-	// Open24h — индексная цена 24h назад (open24h).
+	// Open24h — index price 24h ago (open24h).
 	Open24h decimal.Decimal
-	// High24h — максимальная индексная цена за 24h (high24h).
+	// High24h — highest index price over 24h (high24h).
 	High24h decimal.Decimal
-	// Low24h — минимальная индексная цена за 24h (low24h).
+	// Low24h — lowest index price over 24h (low24h).
 	Low24h decimal.Decimal
-	// SodUtc0 — индекс на 00:00 UTC (sodUtc0).
+	// SodUtc0 — index at 00:00 UTC (sodUtc0).
 	SodUtc0 decimal.Decimal
-	// SodUtc8 — индекс на 08:00 UTC (sodUtc8).
+	// SodUtc8 — index at 08:00 UTC (sodUtc8).
 	SodUtc8 decimal.Decimal
-	// Ts — таймштамп в мс (ts).
+	// Ts — timestamp in ms (ts).
 	Ts int64
 }
 
-// IndexTickers — слайс индексных тикеров.
+// IndexTickers — slice of index tickers.
 type IndexTickers []IndexTicker

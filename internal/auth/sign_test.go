@@ -1,15 +1,15 @@
 /*
-ФАЙЛ: internal/auth/sign_test.go
+FILE: internal/auth/sign_test.go
 
-ОПИСАНИЕ:
-Тесты подписи OKX. Покрывают:
-  - правильный формат preHash (timestamp+method+path+body);
-  - base64 результата HMAC-SHA256;
-  - корректную работу disabled-режима (пустые ключи) и ошибки ErrSignerDisabled;
-  - детерминированность подписи на одних и тех же входах.
+DESCRIPTION:
+OKX signing tests. Cover:
+  - correct preHash format (timestamp+method+path+body);
+  - base64 of HMAC-SHA256 result;
+  - correct disabled-mode behavior (empty keys) and ErrSignerDisabled error;
+  - determinism of the signature given the same inputs.
 
-Эталонные значения посчитаны независимо: HMAC_SHA256("01234567"*N, preImage)
-с известным ключом — см. setUp в каждом тесте.
+Reference values computed independently: HMAC_SHA256("01234567"*N, preImage)
+with a known key — see setUp in each test.
 */
 
 package auth
@@ -61,7 +61,7 @@ func TestSigner_Sign_MatchesReference(t *testing.T) {
 		t.Fatalf("Sign failed: %v", err)
 	}
 
-	// эталон считаем независимо
+	// reference value computed independently
 	var pre string = ts + method + path + body
 	var mac = hmac.New(sha256.New, []byte(secret))
 	mac.Write([]byte(pre))
@@ -91,7 +91,7 @@ func TestSigner_Sign_BodyIncluded(t *testing.T) {
 
 func TestSigner_IsoTimestamp_FormatAndUTC(t *testing.T) {
 	var s *Signer = NewSigner("k", "s", "p")
-	// фиксированное время в MSK (+3), должно нормализоваться в UTC
+	// fixed time in MSK (+3), must be normalized to UTC
 	var msk *time.Location
 	var err error
 	msk, err = time.LoadLocation("Etc/GMT-3")
@@ -109,7 +109,7 @@ func TestSigner_IsoTimestamp_FormatAndUTC(t *testing.T) {
 func TestSigner_String_Redacts(t *testing.T) {
 	var s *Signer = NewSigner("ABCDEFGHIJ", "secret-secret", "pass")
 	var got string = s.String()
-	// не должно содержать ни secret, ни passphrase, ни полный apiKey
+	// must not contain secret, passphrase, or the full apiKey
 	if got == "" {
 		t.Fatalf("String must return non-empty value")
 	}
@@ -118,7 +118,7 @@ func TestSigner_String_Redacts(t *testing.T) {
 	}
 }
 
-// contains — без strings.Contains, чтобы не плодить импортов в тесте.
+// contains — without strings.Contains to avoid extra imports in the test.
 func contains(s, sub string) bool {
 	var i int
 	for i = 0; i+len(sub) <= len(s); i++ {

@@ -1,33 +1,33 @@
 /*
-ФАЙЛ: types/account-config.go
+FILE: types/account-config.go
 
-ОПИСАНИЕ:
-AccountConfig — конфигурация unified-account: режим маржи, режим позиций,
-уровень аккаунта (Simple/Single-currency/Multi-currency/Portfolio),
-auto-loan, IP-whitelist и т.п.
+DESCRIPTION:
+AccountConfig — unified-account configuration: margin mode, position mode,
+account level (Simple/Single-currency/Multi-currency/Portfolio),
+auto-loan, IP whitelist, etc.
 
-Маппится из:
+Mapped from:
   - GET /api/v5/account/config
 
-HFT-применение:
-  - На старте читаем AccountConfig и валидируем, что AcctLv ≥ 2
-    (для cross-margin spot и UTA-фич);
-  - PosMode определяет, какие значения posSide допустимы при
-    CreateOrder ("net" vs "long"/"short");
-  - AutoLoan показывает, разрешён ли margin-borrow без явной команды
-    (важно для риск-менеджмента стратегий).
+HFT usage:
+  - On startup, read AccountConfig and validate that AcctLv ≥ 2
+    (required for cross-margin spot and UTA features);
+  - PosMode determines which posSide values are valid in CreateOrder
+    ("net" vs "long"/"short");
+  - AutoLoan indicates whether margin borrowing is allowed without an explicit
+    command (important for strategy risk management).
 */
 
 package types
 
 import "github.com/shopspring/decimal"
 
-// AccountLevel — уровень аккаунта OKX.
+// AccountLevel — OKX account level.
 type AccountLevel string
 
-// Уровни аккаунта (acctLv в OKX API).
+// Account levels (acctLv in OKX API).
 const (
-	// AccountLevelSimple — Simple mode: только spot, без маржи.
+	// AccountLevelSimple — Simple mode: spot only, no margin.
 	AccountLevelSimple AccountLevel = "1"
 	// AccountLevelSingleCcyMargin — Single-currency margin.
 	AccountLevelSingleCcyMargin AccountLevel = "2"
@@ -37,7 +37,7 @@ const (
 	AccountLevelPortfolioMargin AccountLevel = "4"
 )
 
-// GreeksType — формат отображения греков опционов.
+// GreeksType — options Greeks display format.
 type GreeksType string
 
 const (
@@ -47,37 +47,37 @@ const (
 	GreeksTypeBS GreeksType = "BS"
 )
 
-// AccountConfig — настройки аккаунта.
+// AccountConfig — account settings.
 type AccountConfig struct {
-	// UID — внутренний user id.
+	// UID — internal user id.
 	UID string
-	// MainUID — uid главного аккаунта (для sub-account == uid главного).
+	// MainUID — main account uid (for sub-account equals the main account uid).
 	MainUID string
-	// AcctLv — уровень аккаунта (см. константы AccountLevel*).
+	// AcctLv — account level (see AccountLevel* constants).
 	AcctLv AccountLevel
-	// PosMode — режим позиций ("net_mode" / "long_short_mode") (posMode).
+	// PosMode — position mode ("net_mode" / "long_short_mode") (posMode).
 	PosMode string
-	// AutoLoan — true, если разрешён auto-borrow в margin/cross.
+	// AutoLoan — true if auto-borrow is allowed in margin/cross.
 	AutoLoan bool
-	// GreeksType — формат отображения греков (greeksType).
+	// GreeksType — Greeks display format (greeksType).
 	GreeksType GreeksType
-	// Level — VIP-level пользователя на бирже (lv: "Lv1"..."Lv8"+"VIP1"...).
+	// Level — user VIP level on the exchange (lv: "Lv1"..."Lv8"+"VIP1"...).
 	Level string
-	// CtIsoMode — режим isolated для contracts ("automatic"/"autonomy").
+	// CtIsoMode — isolated mode for contracts ("automatic"/"autonomy").
 	CtIsoMode string
-	// MgnIsoMode — режим isolated для margin ("automatic"/"quick_margin").
+	// MgnIsoMode — isolated mode for margin ("automatic"/"quick_margin").
 	MgnIsoMode string
-	// LiquidationGear — buffer для ликвидации в multi-currency-margin
+	// LiquidationGear — liquidation buffer for multi-currency margin
 	// (liquidationGear).
 	LiquidationGear decimal.Decimal
-	// SpotOffsetType — тип spot-offset для PM ("1"/"2"/"3") (spotOffsetType).
+	// SpotOffsetType — spot-offset type for PM ("1"/"2"/"3") (spotOffsetType).
 	SpotOffsetType string
-	// EnableSpotBorrow — true, если включён spot-borrow в режиме PM.
+	// EnableSpotBorrow — true if spot-borrow is enabled in PM mode.
 	EnableSpotBorrow bool
-	// SpotBorrowAutoRepay — true, если включён auto-repay для spot-borrow.
+	// SpotBorrowAutoRepay — true if auto-repay is enabled for spot-borrow.
 	SpotBorrowAutoRepay bool
-	// LabelEnabledTradingPair — список включённых торговых пар (если ограничено).
+	// LabelEnabledTradingPair — list of enabled trading pairs (if restricted).
 	LabelEnabledTradingPair []string
-	// IPAddresses — IP-whitelist для API-ключа.
+	// IPAddresses — IP whitelist for the API key.
 	IPAddresses []string
 }

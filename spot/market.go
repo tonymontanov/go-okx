@@ -1,22 +1,22 @@
 /*
-ФАЙЛ: spot/market.go
+FILE: spot/market.go
 
-ОПИСАНИЕ:
-Доменный саб-клиент рыночных данных SPOT:
+DESCRIPTION:
+Domain sub-client for SPOT market data:
   - GetSymbolInfo         : GET /api/v5/public/instruments?instType=SPOT&instId=...
   - GetOrderBook          : GET /api/v5/market/books?instId=...&sz=...
   - GetHistoricalCandles  : GET /api/v5/market/history-candles?instId=...&bar=...
 
-ENDPOINT'Ы /market/books, /market/history-candles ОДИНАКОВЫ для SPOT и SWAP,
-определение SPOT — только в /public/instruments через query instType=SPOT
-(и в формате instID без суффикса "-SWAP").
+THE /market/books AND /market/history-candles ENDPOINTS ARE SHARED BETWEEN SPOT AND SWAP;
+SPOT is identified only in /public/instruments via query instType=SPOT
+(and by the instID format without the "-SWAP" suffix).
 
-ОТЛИЧИЯ ОТ SWAP /public/instruments?instType=SWAP:
-  - НЕТ полей ctVal/ctMult/settleCcy в ответе для SPOT.
-  - НЕТ maxMktSz для market BUY с tgtCcy=quote_ccy (но maxMktSz приходит в base
-    для tgtCcy=base_ccy / sell). Парсим как есть.
+DIFFERENCES FROM SWAP /public/instruments?instType=SWAP:
+  - ctVal/ctMult/settleCcy fields are ABSENT in the SPOT response.
+  - maxMktSz is ABSENT for market BUY with tgtCcy=quote_ccy (but maxMktSz is
+    returned in base for tgtCcy=base_ccy / sell). Parsed as-is.
 
-SUB-MINUTE TIMEFRAMES — те же ограничения, что в SWAP (REST не поддерживает 1s/15s/30s).
+SUB-MINUTE TIMEFRAMES — same restrictions as SWAP (REST does not support 1s/15s/30s).
 */
 
 package spot
@@ -33,7 +33,7 @@ import (
 	"github.com/tonymontanov/go-okx/v2/spot/types"
 )
 
-// MarketDataClient — саб-клиент рыночных данных SPOT.
+// MarketDataClient — SPOT market data sub-client.
 type MarketDataClient struct {
 	c *Client
 }
@@ -42,10 +42,10 @@ func newMarketDataClient(c *Client) *MarketDataClient {
 	return &MarketDataClient{c: c}
 }
 
-// rawInstrumentEntry — сырой ответ /public/instruments для SPOT.
-// CtVal/CtMult/SettleCcy для SPOT отсутствуют (или пустые) — оставляем поля,
-// чтобы переиспользовать общую структуру; при парсинге попадут в пустые
-// decimal/string без ошибок.
+// rawInstrumentEntry — raw response from /public/instruments for SPOT.
+// CtVal/CtMult/SettleCcy are absent (or empty) for SPOT — fields are kept to
+// reuse the common struct; during parsing they will receive empty decimal/string
+// values without errors.
 type rawInstrumentEntry struct {
 	InstID   string `json:"instId"`
 	BaseCcy  string `json:"baseCcy"`
@@ -58,7 +58,7 @@ type rawInstrumentEntry struct {
 }
 
 /*
-GetSymbolInfo возвращает спецификацию SPOT-инструмента.
+GetSymbolInfo returns the specification of a SPOT instrument.
 */
 func (m *MarketDataClient) GetSymbolInfo(ctx context.Context, instID string) (types.SymbolInfo, error) {
 	var info types.SymbolInfo
@@ -109,9 +109,9 @@ func (m *MarketDataClient) GetSymbolInfo(ctx context.Context, instID string) (ty
 	return info, nil
 }
 
-// decimalScale возвращает количество значащих знаков после точки в строке
-// "0.0001" → 4. Дублирует логику swap/market.go (5 строк, не имеет смысла
-// тащить через внутренний пакет).
+// decimalScale returns the number of significant decimal places in a string
+// "0.0001" → 4. Duplicates swap/market.go logic (5 lines, not worth pulling
+// into an internal package).
 func decimalScale(s string) int {
 	var dotIdx int = -1
 	var i int
@@ -131,7 +131,7 @@ func decimalScale(s string) int {
 	return scale
 }
 
-// rawOrderBookResponse — формат идентичен SWAP.
+// rawOrderBookResponse — format is identical to SWAP.
 type rawOrderBookResponse struct {
 	Asks  [][]string `json:"asks"`
 	Bids  [][]string `json:"bids"`
@@ -140,7 +140,7 @@ type rawOrderBookResponse struct {
 }
 
 /*
-GetOrderBook возвращает снапшот стакана SPOT. depth ∈ {1, 5, 10, 20, 50, 100, 400}.
+GetOrderBook returns a SPOT order book snapshot. depth ∈ {1, 5, 10, 20, 50, 100, 400}.
 */
 func (m *MarketDataClient) GetOrderBook(ctx context.Context, instID string, depth int) (types.OrderBookSnapshot, error) {
 	var snap types.OrderBookSnapshot
@@ -213,9 +213,9 @@ func parseLevels(raw [][]string) []types.OrderBookLevel {
 }
 
 /*
-GetHistoricalCandles — исторические свечи. length ∈ [1..300]. Sub-minute
-таймфреймы (1s/15s/30s) приведут к ErrorKindInvalidRequest без обращения к
-бирже (как на SWAP).
+GetHistoricalCandles — historical candles. length ∈ [1..300]. Sub-minute
+timeframes (1s/15s/30s) return ErrorKindInvalidRequest without hitting the
+exchange (same as SWAP).
 */
 func (m *MarketDataClient) GetHistoricalCandles(
 	ctx context.Context, instID string, tf types.Timeframe, length int,

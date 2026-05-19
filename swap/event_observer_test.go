@@ -1,13 +1,13 @@
 /*
-ФАЙЛ: swap/event_observer_test.go
+FILE: swap/event_observer_test.go
 
-ОПИСАНИЕ:
-End-to-end тесты на новый RateLimitEventObserver (v2.2.0+) на уровне доменных
-методов swap-пакета. internal/rest уже покрывает observer'а на уровне Options;
-здесь — проверяем, что доменный код проставляет правильный RequestMeta для
-каждого метода (OrderCount / Symbols / Category).
+DESCRIPTION:
+End-to-end tests for the RateLimitEventObserver (v2.2.0+) at the domain-method
+level of the swap package. internal/rest already covers the observer at the
+Options level; here we verify that domain code sets the correct RequestMeta for
+each method (OrderCount / Symbols / Category).
 
-Покрытие методов:
+Method coverage:
   - Trading.CreateOrder       → single Place, 1 symbol
   - Trading.ModifyOrder       → single Amend, 1 symbol
   - Trading.CancelOrder       → single Cancel, 1 symbol
@@ -17,7 +17,7 @@ End-to-end тесты на новый RateLimitEventObserver (v2.2.0+) на ур
   - Trading.CancelBatchOrders → multi Cancel
   - Account.ClosePosition     → Place 1
   - Account.SetLeverage       → Query 0
-  - Account.GetBalance        → Query 0, нет symbols
+  - Account.GetBalance        → Query 0, no symbols
   - Market.GetSymbolInfo      → Market 0, 1 symbol
 */
 
@@ -37,7 +37,7 @@ import (
 	"github.com/tonymontanov/go-okx/v2/swap/types"
 )
 
-// observedEvent — copy of RateLimitEvent для удобства тест-ассертов.
+// observedEvent — copy of RateLimitEvent for convenient test assertions.
 type observedEvent struct {
 	Endpoint   string
 	Method     string
@@ -46,8 +46,8 @@ type observedEvent struct {
 	Category   okx.RateLimitCategory
 }
 
-// mockOKXWithEventObserver — то же что mockOKX в contract_test.go, но
-// конфигурирует event-observer и возвращает thread-safe collector.
+// mockOKXWithEventObserver — same as mockOKX in contract_test.go, but configures
+// an event-observer and returns a thread-safe collector.
 func mockOKXWithEventObserver(t *testing.T, routes map[string]string) (*okx.Client, *eventCollector) {
 	t.Helper()
 	var srv *httptest.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -145,8 +145,8 @@ func TestEventObserver_CreateBatchOrders_MultiSymbol(t *testing.T) {
 	var client, obs = mockOKXWithEventObserver(t, map[string]string{
 		"/api/v5/trade/batch-orders": fixture,
 	})
-	// 2 BTC + 1 ETH = 3 ордера, 2 уникальных символа. Порядок исходного
-	// батча намеренно перемешан — проверяем что Symbols отсортирован.
+	// 2 BTC + 1 ETH = 3 orders, 2 unique symbols. Order of the original
+	// batch is intentionally shuffled — verify that Symbols is sorted.
 	var reqs []types.CreateOrderRequest = []types.CreateOrderRequest{
 		{InstID: "ETH-USDT-SWAP", Side: types.SideTypeBuy, OrderType: types.OrderTypeLimit, Price: mustDec("2500"), Size: mustDec("1")},
 		{InstID: "BTC-USDT-SWAP", Side: types.SideTypeBuy, OrderType: types.OrderTypeLimit, Price: mustDec("40000"), Size: mustDec("1")},
@@ -221,7 +221,7 @@ func TestEventObserver_AccountAndMarketCategories(t *testing.T) {
 		"/api/v5/account/set-leverage": setLeverageFixture,
 	})
 
-	// Account.GetBalance: Query, без symbols
+	// Account.GetBalance: Query, no symbols
 	var _, err = swapOf(client).Account().GetBalance(context.Background())
 	if err != nil {
 		t.Fatalf("GetBalance: %v", err)
@@ -234,7 +234,7 @@ func TestEventObserver_AccountAndMarketCategories(t *testing.T) {
 		t.Errorf("GetBalance Symbols = %v, want empty", ev.Symbols)
 	}
 
-	// Account.GetPositions (через GetSymbolPosition): Query, 1 symbol
+	// Account.GetPositions (via GetSymbolPosition): Query, 1 symbol
 	_, err = swapOf(client).Account().GetSymbolPosition(context.Background(), "BTC-USDT-SWAP")
 	if err != nil {
 		t.Fatalf("GetSymbolPosition: %v", err)
@@ -281,8 +281,8 @@ func TestEventObserver_ClosePosition_TreatedAsPlace(t *testing.T) {
 		t.Fatalf("ClosePosition: %v", err)
 	}
 	var ev observedEvent = obs.last(t)
-	// ClosePosition шлёт market-order — учитываем как Place (счётчик
-	// sub-account 50061 видит, рейт-лимит per-symbol тоже).
+	// ClosePosition sends a market-order — counted as Place (sub-account 50061
+	// counter sees it; per-symbol rate-limit too).
 	if ev.Category != okx.RateLimitCategoryPlace {
 		t.Errorf("ClosePosition Category = %q, want place", ev.Category)
 	}

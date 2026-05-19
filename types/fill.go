@@ -1,111 +1,109 @@
 /*
-ФАЙЛ: types/fill.go
+FILE: types/fill.go
 
-ОПИСАНИЕ:
-Fill — одно исполнение ордера (полное или частичное). В отличие от
-OrderInfo (где видно состояние ордера: live/partially_filled/filled/...),
-Fill — это запись об отдельном trade-event'е: «по такому-то ордеру в
-такое-то время исполнилось N контрактов по цене P, комиссия F».
+DESCRIPTION:
+Fill — a single order execution (full or partial). Unlike OrderInfo (which
+shows the order state: live/partially_filled/filled/...), a Fill is a record
+of an individual trade event: "for this order at this time N contracts were
+executed at price P, fee F".
 
-Маппится из:
-  - GET /api/v5/trade/fills        — последние 3 дня
-  - GET /api/v5/trade/fills-history — последние 3 месяца
+Mapped from:
+  - GET /api/v5/trade/fills         — last 3 days
+  - GET /api/v5/trade/fills-history — last 3 months
   - WS private channel "fills"
 
-ПОЧЕМУ ОТДЕЛЬНЫЙ КАНАЛ В ДОПОЛНЕНИЕ К "orders":
-В канале "orders" приходят push'и при каждом изменении state ордера,
-включая частичные исполнения. Но «fills» специализирован:
-  - меньше латентность (отдельный pipe, без логики state-tracking);
-  - чище модель для PnL/inventory updates;
-  - содержит fillPnl и fillTime, которых нет в orders в той же
-    нормализованной форме.
+WHY A SEPARATE CHANNEL IN ADDITION TO "orders":
+The "orders" channel pushes on every order state change including partial fills.
+But "fills" is more specialised:
+  - lower latency (separate pipe, no state-tracking logic);
+  - cleaner model for PnL/inventory updates;
+  - contains fillPnl and fillTime which are not available in "orders" in the
+    same normalised form.
 
-ВНИМАНИЕ К ЗНАКАМ:
-  - FillSz всегда положительный, направление через Side.
-  - FillPnl положительный — прибыль; отрицательный — убыток (включая
-    funding-payment если был на момент закрытия).
-  - Fee отрицательный — комиссия списана со счёта (taker);
-    положительный — rebate (maker, при VIP-программе).
+NOTE ON SIGNS:
+  - FillSz is always positive; direction is conveyed by Side.
+  - FillPnl positive — profit; negative — loss (includes funding payment if
+    one occurred at close time).
+  - Fee negative — fee debited from the account (taker);
+    positive — rebate (maker, under a VIP programme).
 
-ВНИМАНИЕ К RAW/HISTORIC FILLS:
-Для REST /api/v5/trade/fills-history есть запаздывание до ~2 минут от
-момента сделки. Для realtime используйте WS "fills" или REST
-/api/v5/trade/fills (быстрее).
+NOTE ON HISTORIC FILLS:
+REST /api/v5/trade/fills-history has up to ~2 minutes delay from trade time.
+For real-time use WS "fills" or REST /api/v5/trade/fills (faster).
 */
 
 package types
 
 import "github.com/shopspring/decimal"
 
-// Fill — одно исполнение ордера.
+// Fill — a single order execution.
 type Fill struct {
-	// InstType — тип инструмента.
+	// InstType — instrument type.
 	InstType InstType
-	// InstID — идентификатор инструмента.
+	// InstID — instrument identifier.
 	InstID string
-	// TradeID — id сделки на бирже (tradeId).
+	// TradeID — exchange trade id (tradeId).
 	TradeID string
-	// OrdID — id ордера, к которому относится fill (ordId).
+	// OrdID — order id this fill belongs to (ordId).
 	OrdID string
-	// ClOrdID — клиентский id ордера, если задавался (clOrdId).
+	// ClOrdID — client order id, if set (clOrdId).
 	ClOrdID string
-	// BillID — id записи в bills (billId).
+	// BillID — bills record id (billId).
 	BillID string
-	// Tag — пользовательский тэг ордера (tag).
+	// Tag — user-defined order tag (tag).
 	Tag string
-	// FillPx — цена исполнения (fillPx).
+	// FillPx — execution price (fillPx).
 	FillPx decimal.Decimal
-	// FillSz — размер исполнения в контрактах/base (fillSz).
+	// FillSz — execution size in contracts/base (fillSz).
 	FillSz decimal.Decimal
-	// FillPxVol — цена исполнения в IV (только для опционов, fillPxVol).
+	// FillPxVol — execution price in IV (options only, fillPxVol).
 	FillPxVol decimal.Decimal
-	// FillPxUsd — цена исполнения в USD (для опционов, fillPxUsd).
+	// FillPxUsd — execution price in USD (options, fillPxUsd).
 	FillPxUsd decimal.Decimal
-	// FillMarkVol — mark volatility на момент fill (для опционов).
+	// FillMarkVol — mark volatility at fill time (options).
 	FillMarkVol decimal.Decimal
-	// FillFwdPx — forward price на момент fill (для опционов).
+	// FillFwdPx — forward price at fill time (options).
 	FillFwdPx decimal.Decimal
-	// FillMarkPx — mark price на момент fill (fillMarkPx).
+	// FillMarkPx — mark price at fill time (fillMarkPx).
 	FillMarkPx decimal.Decimal
-	// Side — сторона ордера (buy/sell).
+	// Side — order side (buy/sell).
 	Side SideType
-	// PosSide — сторона позиции (long/short/net). Пустая для cash spot.
+	// PosSide — position side (long/short/net). Empty for cash spot.
 	PosSide string
-	// ExecType — тип исполнения ("T" = taker, "M" = maker) (execType).
+	// ExecType — execution type ("T" = taker, "M" = maker) (execType).
 	ExecType string
-	// FeeCcy — валюта комиссии (feeCcy).
+	// FeeCcy — fee currency (feeCcy).
 	FeeCcy string
-	// Fee — размер комиссии; отрицательное = списано, положительное =
-	// rebate (fee).
+	// Fee — fee amount; negative = debited, positive = rebate (fee).
 	Fee decimal.Decimal
-	// FillPnl — realized PnL по этому fill'у (fillPnl).
+	// FillPnl — realized PnL for this fill (fillPnl).
 	FillPnl decimal.Decimal
-	// FillTime — таймштамп исполнения в мс (fillTime).
+	// FillTime — execution timestamp in ms (fillTime).
 	FillTime int64
-	// Ts — таймштамп записи на сервере OKX в мс (ts).
+	// Ts — OKX server record timestamp in ms (ts).
 	Ts int64
 }
 
-// Fills — слайс fills.
+// Fills — slice of fills.
 type Fills []Fill
 
-// FillsQuery — параметры выборки для GET /api/v5/trade/fills и
-// /api/v5/trade/fills-history. Все поля опциональны.
+// FillsQuery — query parameters for GET /api/v5/trade/fills and
+// /api/v5/trade/fills-history. All fields are optional.
 type FillsQuery struct {
-	// InstID — фильтр по инструменту.
+	// InstID — filter by instrument.
 	InstID string
-	// OrdID — фильтр по конкретному ордеру. Полезно для convenience-метода
-	// GetFill, когда нужны исполнения одного ордера.
+	// OrdID — filter by a specific order. Useful for the GetFill convenience
+	// method when only executions of one order are needed.
 	OrdID string
-	// After — пагинация: вернуть записи СТАРШЕ указанного billId (то есть
-	// «следующая страница назад во времени»).
+	// After — pagination: return records OLDER than the given billId
+	// (i.e. "next page backwards in time").
 	After string
-	// Before — пагинация: вернуть записи МЛАДШЕ указанного billId («новее»).
+	// Before — pagination: return records NEWER than the given billId.
 	Before string
-	// BeginMs — нижняя граница времени fill'а в мс (включительно).
+	// BeginMs — lower bound of fill time in ms (inclusive).
 	BeginMs int64
-	// EndMs — верхняя граница времени fill'а в мс (включительно).
+	// EndMs — upper bound of fill time in ms (inclusive).
 	EndMs int64
-	// Limit — макс. записей в ответе. OKX cap = 100; 0 ⇒ server default.
+	// Limit — max records in response. OKX cap = 100; 0 ⇒ server default.
 	Limit int
 }

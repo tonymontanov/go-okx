@@ -1,40 +1,40 @@
 /*
-ФАЙЛ: types/open-interest.go
+FILE: types/open-interest.go
 
-ОПИСАНИЕ:
-OpenInterest — суммарный объём открытых позиций по инструменту, в трёх
-эквивалентных деноминациях (контракты, базовая валюта, USD).
+DESCRIPTION:
+OpenInterest — total open position volume for an instrument in three
+equivalent denominations (contracts, base currency, USD).
 
-Маппится из:
+Mapped from:
   - GET /api/v5/public/open-interest?instType=...|instId=...
   - WS public channel "open-interest"
 
-HFT-применение:
-  - изменение OI совместно с движением цены — индикатор реальных
-    позиционных потоков (vs noise);
-  - резкий drop OI при движении цены чаще указывает на ликвидации,
-    рост OI — на свежие позиции.
+HFT usage:
+  - OI change combined with price movement — indicator of real positional
+    flow (vs noise);
+  - a sharp OI drop during a price move typically signals liquidations;
+    rising OI signals fresh positions being opened.
 */
 
 package types
 
 import "github.com/shopspring/decimal"
 
-// OpenInterest — snapshot открытого интереса.
+// OpenInterest — open interest snapshot.
 type OpenInterest struct {
-	// InstType — тип инструмента (SWAP/FUTURES/OPTION).
+	// InstType — instrument type (SWAP/FUTURES/OPTION).
 	InstType InstType
-	// InstID — идентификатор инструмента.
+	// InstID — instrument identifier.
 	InstID string
-	// OI — open interest в контрактах (oi).
+	// OI — open interest in contracts (oi).
 	OI decimal.Decimal
-	// OICcy — open interest в base currency (oiCcy).
+	// OICcy — open interest in base currency (oiCcy).
 	OICcy decimal.Decimal
-	// OIUsd — open interest в USD-эквиваленте (oiUsd).
+	// OIUsd — open interest in USD equivalent (oiUsd).
 	OIUsd decimal.Decimal
-	// Ts — таймштамп snapshot'а в мс (ts).
+	// Ts — snapshot timestamp in ms (ts).
 	Ts int64
 }
 
-// OpenInterests — слайс.
+// OpenInterests — slice.
 type OpenInterests []OpenInterest

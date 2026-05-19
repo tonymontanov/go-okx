@@ -1,20 +1,20 @@
 /*
-ФАЙЛ: examples/simple-trade/main.go
+FILE: examples/simple-trade/main.go
 
-ОПИСАНИЕ:
-Минимальный сценарий торговли через REST:
-  1. читаем ключи из ENV (OKX_API_KEY / OKX_SECRET_KEY / OKX_PASSPHRASE);
-  2. ставим лимитный ордер сильно вдалеке от рынка (чтобы не исполнился);
-  3. модифицируем размер;
-  4. отменяем;
-  5. на выходе печатаем итог и rate-limit заголовки.
+DESCRIPTION:
+Minimal REST trading scenario:
+  1. read keys from ENV (OKX_API_KEY / OKX_SECRET_KEY / OKX_PASSPHRASE);
+  2. place a limit order far from the market (so it does not fill);
+  3. modify the size;
+  4. cancel;
+  5. on exit print the result and rate-limit headers.
 
-ВНИМАНИЕ:
-    Пример использует production endpoint. Без demo-режима (он вне Scope v1)
-    он реально отправит ордера. Для защиты от случайного запуска требуется
-    явно выставить OKX_ALLOW_LIVE=1.
+WARNING:
+    The example uses the production endpoint. Without demo mode (out of v1 scope)
+    it will actually send orders. To guard against accidental runs, set
+    OKX_ALLOW_LIVE=1 explicitly.
 
-ЗАПУСК:
+RUN:
     export OKX_API_KEY=...
     export OKX_SECRET_KEY=...
     export OKX_PASSPHRASE=...
@@ -72,8 +72,8 @@ func main() {
 	placeOrder(ctx, swap)
 }
 
-// placeOrder показывает полный happy-path: place → modify → cancel.
-// Все decimal-значения создаются явно — никаких float-литералов.
+// placeOrder demonstrates the full happy-path: place → modify → cancel.
+// All decimal values are created explicitly — no float literals.
 func placeOrder(ctx context.Context, swap *swappkg.Client) {
 	var price decimal.Decimal = decimal.RequireFromString("10000")
 	var size decimal.Decimal = decimal.RequireFromString("1")
@@ -93,7 +93,7 @@ func placeOrder(ctx context.Context, swap *swappkg.Client) {
 	}
 	fmt.Printf("placed: ordId=%s clOrdId=%s rate-limit=%v\n", info.OrderID, info.ClientOrderID, info.RateLimits)
 
-	// Изменим размер.
+	// Modify size.
 	var newSize decimal.Decimal = decimal.RequireFromString("2")
 	_, err = swap.Trading().ModifyOrder(ctx, types.ModifyOrderRequest{
 		InstID:  info.InstID,
@@ -106,7 +106,7 @@ func placeOrder(ctx context.Context, swap *swappkg.Client) {
 		fmt.Println("modified ok")
 	}
 
-	// Отменим.
+	// Cancel.
 	err = swap.Trading().CancelOrder(ctx, types.CancelOrderRequest{
 		InstID:  info.InstID,
 		OrderID: info.OrderID,
@@ -118,9 +118,9 @@ func placeOrder(ctx context.Context, swap *swappkg.Client) {
 	}
 }
 
-// classify приводит ошибку SDK к человеко-читаемой форме с категорией.
-// Включает Cause — без него network-проблемы выглядят как "rest: transport error"
-// без подробностей.
+// classify converts an SDK error to a human-readable form with category.
+// Includes Cause — without it network problems look like "rest: transport error"
+// with no details.
 func classify(err error) string {
 	if err == nil {
 		return "<nil>"

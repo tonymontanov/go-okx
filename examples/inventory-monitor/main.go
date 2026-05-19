@@ -1,32 +1,31 @@
 /*
-ФАЙЛ: examples/inventory-monitor/main.go
+FILE: examples/inventory-monitor/main.go
 
-ОПИСАНИЕ:
-Бесконечный мониторинг инвентаря (позиция + открытые ордера) через приватные
-WS-каналы OKX. НЕ совершает сделок — только подписывается и печатает.
+DESCRIPTION:
+Infinite inventory monitoring (position + open orders) via private OKX WS
+channels. Does NOT place trades — subscribes and prints only.
 
-В отличие от inventory-tracker, этот пример НЕ завершается сам: он живёт до
-Ctrl-C. Любые изменения позиции — в т. ч. переход через ноль, открытие в
-противоположную сторону, частичные заполнения — будут отображаться в реальном
-времени.
+Unlike inventory-tracker, this example does NOT exit on its own: it runs until
+Ctrl-C. Any position changes — including crossing zero, opening in the opposite
+direction, partial fills — are displayed in real time.
 
-Это правильная заготовка для алгоритма, который должен непрерывно следить за
-своим состоянием на бирже.
+This is a correct template for an algorithm that must continuously track its
+exchange state.
 
-ПОКРЫТИЕ:
-  - swap.Stream().WatchPosition       (приватный канал positions)
-  - swap.Stream().WatchOpenOrders     (приватный канал orders)
-  - первичный snapshot позиции через swap.Account().GetSymbolPosition
+COVERAGE:
+  - swap.Stream().WatchPosition       (private positions channel)
+  - swap.Stream().WatchOpenOrders     (private orders channel)
+  - initial position snapshot via swap.Account().GetSymbolPosition
 
-ЗАПУСК:
+RUN:
     ./scripts/run.sh ./examples/inventory-monitor
     OKX_INSTRUMENT=ETH-USDT-SWAP ./scripts/run.sh ./examples/inventory-monitor
 
-Чтобы убедиться, что SDK не завершается при pos=0:
-  1. запусти этот пример;
-  2. в OKX-приложении вручную открой и сразу закрой маленькую позицию;
-  3. в консоли увидишь обновления [pos]/[ord] и при открытии, и при закрытии,
-     и значение pos=0 — программа НЕ выйдет.
+To verify the SDK does not exit when pos=0:
+  1. run this example;
+  2. manually open and immediately close a small position in the OKX app;
+  3. the console will show [pos]/[ord] updates on open, on close, and pos=0 —
+     the program will NOT exit.
 */
 
 package main
@@ -74,8 +73,8 @@ func main() {
 	defer client.Close()
 	var swap *swappkg.Client = client.Swap().(*swappkg.Client)
 
-	// ctx живёт до Ctrl-C. Поскольку мы НЕ ставим тут никаких таймеров и не
-	// зовём cancel() в нормальном потоке — все Watch* живут столько же.
+	// ctx lives until Ctrl-C. Since we do NOT set any timers and do not call
+	// cancel() in the normal flow — all Watch* live as long.
 	var ctx context.Context
 	var cancel context.CancelFunc
 	ctx, cancel = context.WithCancel(context.Background())
@@ -83,7 +82,7 @@ func main() {
 
 	fmt.Printf("=== Inventory monitor for %s — Ctrl-C to stop ===\n\n", instID)
 
-	// 1. Стартовый snapshot через REST (чтобы видеть состояние до первого WS-апдейта).
+	// 1. Initial snapshot via REST (to see the state before the first WS update).
 	var pos, perr = swap.Account().GetSymbolPosition(ctx, instID)
 	if perr != nil {
 		fmt.Printf("[initial] position fetch error: %s\n", classify(perr))
@@ -95,10 +94,10 @@ func main() {
 	}
 	fmt.Println()
 
-	// 2. Счётчики апдейтов — для итоговой статистики при выходе.
+	// 2. Update counters — for summary statistics on exit.
 	var posUpdates, ordUpdates atomic.Uint64
 
-	// 3. Подписываемся на изменения позиции.
+	// 3. Subscribe to position changes.
 	err = swap.Stream().WatchPosition(ctx, instID, func(p types.PositionInfo) {
 		posUpdates.Add(1)
 		fmt.Printf("%s  [pos]  %s pos=%s avgPx=%s uPnL=%s\n",
@@ -112,7 +111,7 @@ func main() {
 		log.Fatalf("WatchPosition: %s", classify(err))
 	}
 
-	// 4. Подписываемся на изменения ордеров.
+	// 4. Subscribe to order changes.
 	err = swap.Stream().WatchOpenOrders(ctx, instID, func(orders []types.OrderInfo) {
 		ordUpdates.Add(1)
 		var i int
@@ -133,7 +132,7 @@ func main() {
 	fmt.Println("monitoring... (Ctrl-C to stop)")
 	fmt.Println()
 
-	// 5. Ждём Ctrl-C. ctx остаётся живым — Watch* продолжают работать.
+	// 5. Wait for Ctrl-C. ctx stays alive — Watch* keep running.
 	var sigCh chan os.Signal = make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	<-sigCh

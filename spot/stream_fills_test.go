@@ -1,10 +1,10 @@
 /*
-ФАЙЛ: spot/stream_fills_test.go
+FILE: spot/stream_fills_test.go
 
-ОПИСАНИЕ:
-Smoke-тест на приватный канал "fills". Подписка идёт через privateConn,
-поэтому mock-сервер должен корректно обработать login (без проверки
-подписи — это уровень internal/ws) и затем отдать push с одним fill'ом.
+DESCRIPTION:
+Smoke test for the private "fills" channel. The subscription goes through
+privateConn, so the mock server must correctly handle login (without signature
+verification — that is handled at the internal/ws level) and then push a single fill.
 */
 
 package spot
@@ -25,9 +25,9 @@ import (
 	"github.com/tonymontanov/go-okx/v2/spot/types"
 )
 
-// startPrivateSubMockWS — поднимает mock-сервер, который умеет login + ack
-// на subscribe + один push (с подстановкой channel/instId/instType).
-// seenChannel хранит имя последнего канала subscribe.
+// startPrivateSubMockWS — starts a mock server that handles login + ack
+// on subscribe + one push (with channel/instId/instType substitution).
+// seenChannel stores the name of the last subscribe channel.
 func startPrivateSubMockWS(t *testing.T, push string) (string, *httptest.Server, *atomic.Pointer[string]) {
 	t.Helper()
 	var upgrader websocket.Upgrader = websocket.Upgrader{
@@ -86,7 +86,7 @@ func startPrivateSubMockWS(t *testing.T, push string) (string, *httptest.Server,
 }
 
 func TestStream_WatchFills_SubscribesToFillsAndParses(t *testing.T) {
-	// Один fill с заполненными ключевыми полями.
+	// One fill with key fields populated.
 	var push string = `{"arg":{"channel":"{CHANNEL}","instType":"{INSTTYPE}"},"data":[{
 		"instType":"SPOT","instId":"BTC-USDT","tradeId":"t-1","ordId":"o-1",
 		"clOrdId":"cli-1","billId":"b-1","tag":"","fillPx":"60000","fillSz":"0.5",

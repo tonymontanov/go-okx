@@ -1,81 +1,82 @@
 /*
-ФАЙЛ: spot/types/create-order-request.go
+FILE: spot/types/create-order-request.go
 
-ОПИСАНИЕ:
-Запрос на создание ордера SPOT. Отличия от SWAP-варианта:
-  - НЕТ PosSide (на споте нет hedge-режима).
-  - НЕТ ReduceOnly (на cash-споте нельзя шортить — нечего "уменьшать").
-  - TdMode по умолчанию `cash` (а не `cross`).
-  - Size — в БАЗОВОЙ валюте (например 0.1 для 0.1 BTC), а не в контрактах.
-  - Для market BUY OKX по умолчанию интерпретирует `sz` как количество
-    КОТИРОВОЧНОЙ валюты (USDT для BTC-USDT). Если хотите купить точно N
-    единиц базовой валюты — выставляйте TgtCcy = TgtCcyBase.
+DESCRIPTION:
+SPOT order creation request. Differences from the SWAP variant:
+  - NO PosSide (spot has no hedge mode).
+  - NO ReduceOnly (shorting is not possible on cash spot — nothing to "reduce").
+  - TdMode defaults to `cash` (not `cross`).
+  - Size — in BASE currency (e.g. 0.1 for 0.1 BTC), not in contracts.
+  - For market BUY, OKX interprets `sz` as QUOTE currency by default
+    (USDT for BTC-USDT). To buy exactly N units of base currency, set
+    TgtCcy = TgtCcyBase.
 
-ИНВАРИАНТЫ:
-  - Для OrderType=Market на BUY: либо передавайте Size в quote-валюте и не
-    задавайте TgtCcy (поведение OKX по умолчанию), либо передавайте
-    TgtCcy=TgtCcyBase и Size в базовой валюте.
-  - Для всех остальных OrderType (limit/post_only/fok/ioc): Size в БАЗОВОЙ
-    валюте, Price обязательна.
+INVARIANTS:
+  - For OrderType=Market on BUY: either pass Size in quote currency and
+    omit TgtCcy (OKX default behaviour), or pass TgtCcy=TgtCcyBase and
+    Size in base currency.
+  - For all other OrderTypes (limit/post_only/fok/ioc): Size in BASE
+    currency, Price is required.
 */
 
 package types
 
 import "github.com/shopspring/decimal"
 
-// TgtCcy — какую валюту OKX должен считать единицей измерения Size для
-// market-ордеров на спот. По умолчанию для buy = quote_ccy (USDT), для
-// sell = base_ccy (BTC). Для limit-ордеров параметр ИГНОРИРУЕТСЯ — там
-// Size всегда в базовой валюте.
+// TgtCcy — the currency OKX should use as the unit of measurement for Size
+// in spot market orders. Default: buy = quote_ccy (USDT), sell = base_ccy (BTC).
+// For limit orders the parameter is IGNORED — sz is always in base currency.
 type TgtCcy string
 
 const (
-	// TgtCcyBase — Size трактуется как количество базовой валюты (BTC).
+	// TgtCcyBase — Size is interpreted as a quantity in base currency (BTC).
 	TgtCcyBase TgtCcy = "base_ccy"
-	// TgtCcyQuote — Size трактуется как сумма в котировочной валюте (USDT).
+	// TgtCcyQuote — Size is interpreted as an amount in quote currency (USDT).
 	TgtCcyQuote TgtCcy = "quote_ccy"
 )
 
-// CreateOrderRequest — запрос на создание ордера SPOT.
+// CreateOrderRequest — SPOT order creation request.
 type CreateOrderRequest struct {
-	// InstID — инструмент в формате OKX SPOT (например, "BTC-USDT").
+	// InstID — instrument in OKX SPOT format (e.g. "BTC-USDT").
 	InstID string
 
 	// Side — buy/sell.
 	Side SideType
 
-	// OrderType — limit/market/post_only/fok/ioc. OptimalLimitIOC на SPOT
-	// не поддерживается биржей; SDK не валидирует, OKX вернёт ошибку.
-	// Если задан явный OrderType — поле TimeInForce ИГНОРИРУЕТСЯ.
+	// OrderType — limit/market/post_only/fok/ioc. OptimalLimitIOC is not
+	// supported on SPOT by the exchange; the SDK does not validate this,
+	// OKX will return an error. If an explicit OrderType is set, TimeInForce
+	// is IGNORED.
 	OrderType OrderType
 
-	// TimeInForce — TIF в нотации Binance-style (GTC/IOC/FOK/GTX). Конвертируется
-	// в OrderType, если OrderType пуст.
+	// TimeInForce — TIF in Binance-style notation (GTC/IOC/FOK/GTX). Converted
+	// to OrderType when OrderType is empty.
 	TimeInForce TimeInForceType
 
-	// Size — количество в БАЗОВОЙ валюте (например, 0.1 BTC). Для market BUY
-	// может быть трактовано как quote-валюта в зависимости от TgtCcy.
+	// Size — quantity in BASE currency (e.g. 0.1 BTC). For market BUY may be
+	// interpreted as quote currency depending on TgtCcy.
 	Size decimal.Decimal
 
-	// Price — цена для limit-ордеров. Игнорируется для market.
+	// Price — price for limit orders. Ignored for market.
 	Price decimal.Decimal
 
-	// ClientOrderID — клиентский id (1..32 символа [A-Za-z0-9], только буквы
-	// и цифры; биржа отклонит подчёркивания/дефисы/точки кодом 51000).
+	// ClientOrderID — client order id (1..32 characters [A-Za-z0-9], letters
+	// and digits only; underscores/hyphens/dots are rejected by the exchange
+	// with code 51000).
 	ClientOrderID string
 
-	// TdMode — margin-mode. Если пустой — выводится в TdModeCash (default для SPOT).
-	// Для spot margin trading (cross/isolated) пользователь должен задать явно.
+	// TdMode — margin mode. If empty, defaults to TdModeCash (SPOT default).
+	// For spot margin trading (cross/isolated), must be set explicitly.
 	TdMode TdMode
 
-	// TgtCcy — единица измерения Size для market-ордеров. См. doc-комментарий
-	// типа TgtCcy. Для limit-ордеров параметр игнорируется (sz всегда base).
-	// Если пустой — используется OKX-default (buy=quote, sell=base).
+	// TgtCcy — unit of measurement for Size in market orders. See the TgtCcy
+	// type doc-comment. For limit orders the parameter is ignored (sz is always
+	// base). If empty, the OKX default is used (buy=quote, sell=base).
 	TgtCcy TgtCcy
 
-	// Ccy — валюта маржи (для spot margin trading). На cash-споте не нужна.
+	// Ccy — margin currency (for spot margin trading). Not needed on cash spot.
 	Ccy string
 
-	// Tag — broker tag (опционально, для OKX broker program).
+	// Tag — broker tag (optional, for the OKX broker program).
 	Tag string
 }

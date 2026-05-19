@@ -1,24 +1,24 @@
 /*
-ФАЙЛ: spot/trading_fills.go
+FILE: spot/trading_fills.go
 
-ОПИСАНИЕ:
-REST-методы получения fills для SPOT-профиля:
-  - GetFills(ctx, query)         — последние 3 дня;
-  - GetFillsHistory(ctx, query)  — последние 3 месяца (с пагинацией);
-  - GetFill(ctx, instID, ordID, tradeID) — convenience, один fill.
+DESCRIPTION:
+REST methods for retrieving fills for the SPOT profile:
+  - GetFills(ctx, query)         — last 3 days;
+  - GetFillsHistory(ctx, query)  — last 3 months (with pagination);
+  - GetFill(ctx, instID, ordID, tradeID) — convenience wrapper, single fill.
 
-ПОЧЕМУ ДВА ENDPOINT'А:
-OKX разделяет «свежие» (3 дня) и «исторические» (3 месяца) fills на
-два endpoint'а с разными rate-limit'ами. Свежие — быстрее, исторические
-— с задержкой до 2 минут.
+WHY TWO ENDPOINTS:
+OKX splits "recent" (3 days) and "historical" (3 months) fills across two
+endpoints with different rate limits. Recent fills are returned faster;
+historical fills may be delayed by up to 2 minutes.
 
-ПАГИНАЦИЯ:
-Через FillsQuery.After/Before по billId. Логика OKX: After — старее
-указанного billId, Before — новее. Limit ≤ 100; 0 ⇒ server default.
+PAGINATION:
+Via FillsQuery.After/Before by billId. OKX semantics: After — older than the
+given billId, Before — newer. Limit ≤ 100; 0 ⇒ server default.
 
-ПАРСИНГ:
-Переиспользует convertFill из stream.go — формат данных идентичен
-WS-каналу 'fills'.
+PARSING:
+Reuses convertFill from stream.go — the data format is identical to the
+'fills' WS channel.
 */
 
 package spot
@@ -33,25 +33,24 @@ import (
 	"github.com/tonymontanov/go-okx/v2/spot/types"
 )
 
-// GetFills — последние 3 дня исполнений SPOT.
+// GetFills — last 3 days of SPOT executions.
 func (t *TradingClient) GetFills(ctx context.Context, q types.FillsQuery) ([]types.Fill, error) {
 	return t.fetchFills(ctx, "/api/v5/trade/fills", q)
 }
 
-// GetFillsHistory — до 3 месяцев исполнений SPOT.
+// GetFillsHistory — up to 3 months of SPOT executions.
 func (t *TradingClient) GetFillsHistory(ctx context.Context, q types.FillsQuery) ([]types.Fill, error) {
 	return t.fetchFills(ctx, "/api/v5/trade/fills-history", q)
 }
 
 /*
-GetFill возвращает все fills конкретного ордера, отсортированные по
-fillTime (старые → новые). Если ордер исполнился целиком одним fill'ом,
-вернётся один элемент; для частичных fill'ов — несколько.
+GetFill returns all fills for a specific order, sorted by fillTime (oldest first).
+If the order was fully filled in a single execution, one element is returned;
+for partial fills — multiple elements.
 
-ПРИМЕЧАНИЕ:
-OKX не имеет endpoint'а «один fill по tradeId». Поэтому реализация —
-это GetFills с фильтром по ordID и пост-фильтрацией по tradeID на
-клиенте.
+NOTE:
+OKX has no "single fill by tradeId" endpoint. The implementation uses
+GetFills filtered by ordID with client-side post-filtering by tradeID.
 */
 func (t *TradingClient) GetFill(ctx context.Context, instID, ordID, tradeID string) ([]types.Fill, error) {
 	if ordID == "" {

@@ -1,26 +1,26 @@
 /*
-ФАЙЛ: swap/client.go
+FILE: swap/client.go
 
-ОПИСАНИЕ:
-Корневой клиент SWAP-профиля. Хранит ссылку на parent okx.Client (REST,
-Signer, Logger, Config) и предоставляет четыре доменных саб-клиента.
+DESCRIPTION:
+Root client for the SWAP profile. Holds a reference to the parent okx.Client
+(REST, Signer, Logger, Config) and exposes four domain sub-clients.
 
-ОСНОВНЫЕ ФУНКЦИИ:
-  - NewClient(parent)        : конструктор. Регистрируется в okx через init.
-  - (*Client).Trading()      : доменный саб-клиент торговли.
-  - (*Client).Account()      : доменный саб-клиент позиций/счетов.
-  - (*Client).MarketData()   : доменный саб-клиент рыночных данных.
-  - (*Client).Stream()       : доменный саб-клиент WS-подписок (заглушка в M1).
+MAIN FUNCTIONS:
+  - NewClient(parent)        : constructor. Registers with okx via init.
+  - (*Client).Trading()      : domain sub-client for trading.
+  - (*Client).Account()      : domain sub-client for positions/accounts.
+  - (*Client).MarketData()   : domain sub-client for market data.
+  - (*Client).Stream()       : domain sub-client for WS subscriptions.
 
-КОНТРАКТ:
-  - Client потокобезопасен: саб-клиенты — read-only после конструирования.
-  - Все REST-вызовы идут через parent.REST() — общий пул соединений.
+CONTRACT:
+  - Client is thread-safe: sub-clients are read-only after construction.
+  - All REST calls go through parent.REST() — shared connection pool.
 
-ОСОБЕННОСТИ ID:
-  - clOrdId в OKX ограничен 32 символами [A-Za-z0-9] (case-sensitive
-    alphanumerics, без подчёркиваний и пунктуации), тег `tag` — 16 символов
-    того же алфавита. SDK эту проверку делает на этапе сборки запроса
-    (см. trading.go) и возвращает ErrorKindInvalidRequest без отправки.
+ID CONSTRAINTS:
+  - clOrdId in OKX is limited to 32 characters [A-Za-z0-9] (case-sensitive
+    alphanumerics, no underscores or punctuation); the `tag` field — 16 characters
+    of the same alphabet. The SDK validates this at request-build time
+    (see trading.go) and returns ErrorKindInvalidRequest without sending.
 */
 
 package swap
@@ -32,7 +32,7 @@ import (
 	"github.com/tonymontanov/go-okx/v2/internal/ws"
 )
 
-// Client — клиент SWAP-профиля OKX.
+// Client — OKX SWAP profile client.
 type Client struct {
 	parent *okx.Client
 
@@ -47,7 +47,7 @@ type Client struct {
 	privateWs     *ws.Conn
 }
 
-// NewClient создаёт SWAP-клиент. Параметр parent обязателен.
+// NewClient creates a SWAP client. The parent argument is required.
 func NewClient(parent *okx.Client) *Client {
 	if parent == nil {
 		return nil
@@ -60,28 +60,28 @@ func NewClient(parent *okx.Client) *Client {
 	return c
 }
 
-// Parent возвращает корневой okx.Client.
+// Parent returns the root okx.Client.
 func (c *Client) Parent() *okx.Client { return c.parent }
 
-// Trading возвращает саб-клиент торговли.
+// Trading returns the trading sub-client.
 func (c *Client) Trading() *TradingClient { return c.trading }
 
-// Account возвращает саб-клиент позиций/счетов.
+// Account returns the position/account sub-client.
 func (c *Client) Account() *AccountClient { return c.account }
 
-// MarketData возвращает саб-клиент рыночных данных.
+// MarketData returns the market data sub-client.
 func (c *Client) MarketData() *MarketDataClient { return c.marketData }
 
-// Stream возвращает саб-клиент WS-подписок.
+// Stream returns the WS subscription sub-client.
 func (c *Client) Stream() *StreamClient { return c.stream }
 
-// logger / rest / signer — внутренние шорткаты для саб-клиентов.
+// logger / rest / signer — internal shortcuts for sub-clients.
 func (c *Client) logger() okx.Logger  { return c.parent.Logger() }
 func (c *Client) rest() restDoer      { return c.parent.REST() }
 func (c *Client) config() okx.Config  { return c.parent.Config() }
 func (c *Client) signerEnabled() bool { return c.parent.Signer().Enabled() }
 
-// publicConn возвращает (лениво создавая) public WS-соединение.
+// publicConn lazily creates and returns the public WS connection.
 func (c *Client) publicConn() *ws.Conn {
 	c.publicWsOnce.Do(func() {
 		var cfg okx.Config = c.parent.Config()
@@ -95,7 +95,7 @@ func (c *Client) publicConn() *ws.Conn {
 	return c.publicWs
 }
 
-// privateConn возвращает (лениво создавая) private WS-соединение.
+// privateConn lazily creates and returns the private WS connection.
 func (c *Client) privateConn() *ws.Conn {
 	c.privateWsOnce.Do(func() {
 		var cfg okx.Config = c.parent.Config()
@@ -109,7 +109,7 @@ func (c *Client) privateConn() *ws.Conn {
 	return c.privateWs
 }
 
-// toWsConfig конвертирует публичный okx.WsConfig в локальный ws.Config.
+// toWsConfig converts the public okx.WsConfig into a local ws.Config.
 func toWsConfig(cfg okx.Config, url string, private bool) ws.Config {
 	return ws.Config{
 		URL:                     url,
@@ -126,10 +126,10 @@ func toWsConfig(cfg okx.Config, url string, private bool) ws.Config {
 	}
 }
 
-// init регистрирует фабрику в корневом пакете, чтобы okx.Client.Swap() лениво
-// возвращал *swap.Client. Это позволяет пользователю не тащить swap-импорт
-// руками, если он работает только через корневой Client (но при таком стиле
-// нужен blank-import "github.com/tonymontanov/go-okx/v2/swap").
+// init registers the factory in the root package so that okx.Client.Swap()
+// lazily returns *swap.Client. This allows users to avoid an explicit swap import
+// when working only through the root Client (though a blank-import of
+// "github.com/tonymontanov/go-okx/v2/swap" is still required in that case).
 func init() {
 	okx.RegisterSwapFactory(func(parent *okx.Client) any {
 		return NewClient(parent)

@@ -1,36 +1,36 @@
 /*
-ФАЙЛ: swap/types/symbol-info.go
+FILE: swap/types/symbol-info.go
 
-ОПИСАНИЕ:
-Структура с информацией о торговом инструменте SWAP (фильтры, precision,
-contract value). Заполняется из ответа `GET /api/v5/public/instruments?instType=SWAP`.
+DESCRIPTION:
+SWAP instrument specification struct (filters, precision, contract value).
+Populated from `GET /api/v5/public/instruments?instType=SWAP`.
 
-ПОЛЯ:
-  - InstID         — id инструмента, "BTC-USDT-SWAP".
-  - BaseCcy        — базовая валюта ("BTC").
-  - QuoteCcy       — котировочная валюта ("USDT").
-  - SettleCcy      — валюта расчётов (для USD-M SWAP совпадает с QuoteCcy).
-  - CtVal          — стоимость одного контракта в базовой валюте (contract value).
-  - CtMult         — мультипликатор контракта (обычно 1).
-  - TickSize       — минимальный шаг цены (например 0.1).
-  - LotSize        — минимальный шаг количества (минимальный инкремент sz).
-  - MinSize        — минимальный размер ордера в контрактах.
-  - MaxLimitSize   — максимальный размер для limit-ордера.
-  - MaxMarketSize  — максимальный размер для market-ордера.
+FIELDS:
+  - InstID         — instrument id, "BTC-USDT-SWAP".
+  - BaseCcy        — base currency ("BTC").
+  - QuoteCcy       — quote currency ("USDT").
+  - SettleCcy      — settlement currency (equals QuoteCcy for USD-M SWAP).
+  - CtVal          — value of one contract in base currency (contract value).
+  - CtMult         — contract multiplier (usually 1).
+  - TickSize       — minimum price increment (e.g. 0.1).
+  - LotSize        — minimum quantity increment (minimum sz increment).
+  - MinSize        — minimum order size in contracts.
+  - MaxLimitSize   — maximum size for a limit order.
+  - MaxMarketSize  — maximum size for a market order.
 
-ВЫЧИСЛИМЫЕ ПОЛЯ (для совместимости с core/types.SymbolInfo):
-  - PricePrecision    — количество знаков после запятой в TickSize.
-  - QuantityPrecision — количество знаков после запятой в LotSize.
+DERIVED FIELDS (for compatibility with core/types.SymbolInfo):
+  - PricePrecision    — number of decimal places in TickSize.
+  - QuantityPrecision — number of decimal places in LotSize.
 
-ЗАВИСИМОСТИ:
-- github.com/shopspring/decimal: точные числовые поля.
+DEPENDENCIES:
+  - github.com/shopspring/decimal: precise numeric fields.
 */
 
 package types
 
 import "github.com/shopspring/decimal"
 
-// SymbolInfo — спецификация SWAP-инструмента.
+// SymbolInfo — SWAP instrument specification.
 type SymbolInfo struct {
 	InstID            string
 	BaseCcy           string

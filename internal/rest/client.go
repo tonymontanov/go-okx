@@ -1,19 +1,19 @@
 /*
-ФАЙЛ: internal/rest/client.go
+FILE: internal/rest/client.go
 
-ОПИСАНИЕ:
-Низкоуровневый REST-клиент SDK. Тонкий слой над http.Client, который:
-  1. собирает URL (BaseURL + path + query);
-  2. подписывает запрос (Signer);
-  3. выполняет HTTP-вызов с дедлайном из ctx или Config.RequestTimeout;
-  4. парсит обёртку OKX {code, msg, data};
-  5. маппит ошибки в *okxerr.Error с правильной категорией;
-  6. собирает rate-limit заголовки для возврата вызывающему коду.
+DESCRIPTION:
+Low-level SDK REST client. A thin layer over http.Client that:
+  1. assembles the URL (BaseURL + path + query);
+  2. signs the request (Signer);
+  3. executes the HTTP call with deadline from ctx or Config.RequestTimeout;
+  4. parses the OKX envelope {code, msg, data};
+  5. maps errors to *okxerr.Error with the correct category;
+  6. collects rate-limit headers to return to the caller.
 
-ВАЖНО ПРО ИМПОРТЫ:
-  - НЕ импортирует корневой okx-пакет (он импортирует rest), чтобы избежать
-    import-cycle. Все нужные типы (Error/ErrorKind/Logger/Config) живут в
-    internal/okxerr, internal/okxlog и в локальном Config.
+IMPORT NOTE:
+  - Does NOT import the root okx package (it imports rest), to avoid an
+    import cycle. All required types (Error/ErrorKind/Logger/Config) live in
+    internal/okxerr, internal/okxlog, and the local Config.
 */
 
 package rest
@@ -34,7 +34,7 @@ import (
 	"github.com/tonymontanov/go-okx/v2/internal/okxlog"
 )
 
-// rateLimitHeaders — заголовки OKX, которые мы возвращаем вызывающему коду.
+// rateLimitHeaders — OKX headers returned to the caller.
 var rateLimitHeaders = []string{
 	"ratelimit-limit",
 	"ratelimit-remaining",
@@ -44,60 +44,60 @@ var rateLimitHeaders = []string{
 	"x-ratelimit-reset",
 }
 
-// Config — параметры REST-транспорта. Заполняется из публичного okx.RestConfig
-// в корневом пакете (там делается явная конвертация структур, чтобы избежать
-// import-cycle).
+// Config — REST transport parameters. Populated from the public okx.RestConfig
+// in the root package (explicit struct conversion is done there to avoid an
+// import cycle).
 type Config struct {
 	RequestTimeout      time.Duration
 	MaxIdleConns        int
 	MaxIdleConnsPerHost int
 	IdleConnTimeout     time.Duration
-	// Demo — если true, на каждый запрос добавляется заголовок
-	// "x-simulated-trading: 1" — OKX переключает обработку в режим paper-trading.
+	// Demo — if true, every request gets the header
+	// "x-simulated-trading: 1" — OKX switches processing to paper-trading mode.
 	Demo bool
-	// RateLimitObserver — опциональный legacy-callback, вызывается СИНХРОННО
-	// после получения HTTP-ответа (и до парсинга тела) с собранными rate-limit
-	// заголовками. nil → no-op. Подробный контракт — см. okx.Config в корневом
-	// пакете (там это поле публикуется конечному пользователю SDK).
+	// RateLimitObserver — optional legacy callback, called SYNCHRONOUSLY after
+	// receiving the HTTP response (and before parsing the body) with the collected
+	// rate-limit headers. nil → no-op. Full contract — see okx.Config in the root
+	// package (where this field is published to the end SDK user).
 	RateLimitObserver func(endpoint string, headers map[string]string)
-	// RateLimitEventObserver — расширенный callback (v2.2.0+). Принимает
-	// метаданные запроса (endpoint, method, headers, RequestMeta), которые
-	// корневой okx.Client конвертирует в публичный okx.RateLimitEvent.
-	// nil → no-op. Если заданы оба observer'а — оба вызываются последовательно.
+	// RateLimitEventObserver — extended callback (v2.2.0+). Receives request
+	// metadata (endpoint, method, headers, RequestMeta) that the root okx.Client
+	// converts into the public okx.RateLimitEvent.
+	// nil → no-op. If both observers are set, both are called in sequence.
 	RateLimitEventObserver func(endpoint, method string, headers map[string]string, meta RequestMeta)
 }
 
-// RequestMeta — метаданные запроса, известные на стороне domain-слоя
-// (swap/trading.go, swap/account.go), которые нужны внешнему rate-limiter'у
-// для точного учёта OKX лимитов. Заполняется вызывающим методом и
-// прокидывается через rest.Options в RateLimitEventObserver. Если пусто —
-// observer получит нулевые значения (count=0, нет symbols, category="").
+// RequestMeta — request metadata known at the domain layer
+// (swap/trading.go, swap/account.go) that is needed by an external rate-limiter
+// for accurate OKX limit tracking. Populated by the calling method and forwarded
+// through rest.Options to RateLimitEventObserver. If empty, the observer
+// receives zero values (count=0, no symbols, category="").
 type RequestMeta struct {
-	// OrderCount — сколько ордеров затрагивает запрос. 1 для single, N
-	// для batch, 0 для не-trading. См. okx.RateLimitEvent.OrderCount.
+	// OrderCount — number of orders affected by the request. 1 for single, N
+	// for batch, 0 for non-trading. See okx.RateLimitEvent.OrderCount.
 	OrderCount int
-	// Symbols — список OKX InstID. См. okx.RateLimitEvent.Symbols.
+	// Symbols — list of OKX InstIDs. See okx.RateLimitEvent.Symbols.
 	Symbols []string
-	// Category — строковое представление okx.RateLimitCategory
-	// ("place"/"amend"/"cancel"/"query"/"market"/""). Передаём как
-	// строку, чтобы не возникал import-cycle internal/rest ↔ корневой okx.
+	// Category — string representation of okx.RateLimitCategory
+	// ("place"/"amend"/"cancel"/"query"/"market"/""). Passed as a string
+	// to avoid an import cycle internal/rest ↔ root okx.
 	Category string
 }
 
-// Options — параметры одного REST-запроса.
+// Options — parameters for a single REST request.
 type Options struct {
 	Method string
 	Path   string
 	Query  url.Values
 	Body   any
 	Signed bool
-	// Meta — метаданные для RateLimitEventObserver. Если zero — observer
-	// получает нули. Заполняется доменными методами swap/* там, где
-	// известны instId / batch size / категория запроса.
+	// Meta — metadata for RateLimitEventObserver. If zero, the observer receives
+	// zeros. Populated by swap/* domain methods where instId / batch size /
+	// request category are known.
 	Meta RequestMeta
 }
 
-// Response — обобщённая обёртка ответа OKX:
+// Response — generic OKX response envelope:
 //
 //	{ "code":"0", "msg":"", "data":[...] }
 type Response struct {
@@ -106,10 +106,10 @@ type Response struct {
 	Data jsoniterRawMessage `json:"data"`
 }
 
-// jsoniterRawMessage — аналог json.RawMessage, корректно работающий с jsoniter.
+// jsoniterRawMessage — json.RawMessage equivalent that works correctly with jsoniter.
 type jsoniterRawMessage []byte
 
-// MarshalJSON реализует json.Marshaler.
+// MarshalJSON implements json.Marshaler.
 func (m jsoniterRawMessage) MarshalJSON() ([]byte, error) {
 	if len(m) == 0 {
 		return []byte("null"), nil
@@ -117,13 +117,13 @@ func (m jsoniterRawMessage) MarshalJSON() ([]byte, error) {
 	return []byte(m), nil
 }
 
-// UnmarshalJSON реализует json.Unmarshaler.
+// UnmarshalJSON implements json.Unmarshaler.
 func (m *jsoniterRawMessage) UnmarshalJSON(data []byte) error {
 	*m = append((*m)[:0], data...)
 	return nil
 }
 
-// UnmarshalData разворачивает поле data ответа в произвольный dest.
+// UnmarshalData unmarshals the response data field into an arbitrary dest.
 func (r Response) UnmarshalData(dest any) error {
 	if len(r.Data) == 0 || bytes.Equal(r.Data, []byte("null")) {
 		return nil
@@ -131,7 +131,7 @@ func (r Response) UnmarshalData(dest any) error {
 	return codec.Unmarshal(r.Data, dest)
 }
 
-// Client — низкоуровневый REST-клиент.
+// Client — low-level REST client.
 type Client struct {
 	httpClient             *http.Client
 	signer                 *auth.Signer
@@ -143,7 +143,7 @@ type Client struct {
 	rateLimitEventObserver func(endpoint, method string, headers map[string]string, meta RequestMeta)
 }
 
-// NewClient создаёт REST-клиент.
+// NewClient creates a REST client.
 func NewClient(baseURL string, signer *auth.Signer, cfg Config, ua string, log okxlog.Logger) *Client {
 	if log == nil {
 		log = okxlog.Noop()
@@ -170,7 +170,7 @@ func NewClient(baseURL string, signer *auth.Signer, cfg Config, ua string, log o
 	}
 }
 
-// Close закрывает idle-соединения транспорта.
+// Close closes idle transport connections.
 func (c *Client) Close() {
 	if c == nil || c.httpClient == nil {
 		return
@@ -181,8 +181,8 @@ func (c *Client) Close() {
 }
 
 /*
-Do выполняет один REST-вызов и возвращает обёртку Response + rate-limit
-заголовки + ошибку. Семантика ошибок — см. документацию пакета.
+Do executes a single REST call and returns the Response envelope + rate-limit
+headers + error. Error semantics — see package documentation.
 */
 func (c *Client) Do(ctx context.Context, opts Options) (Response, map[string]string, error) {
 	var resp Response
@@ -215,15 +215,15 @@ func (c *Client) Do(ctx context.Context, opts Options) (Response, map[string]str
 	}()
 
 	rateLimits = collectRateLimitHeaders(httpResp.Header)
-	// Уведомляем observer'ов ДО парсинга тела: даже если ответ невалидный JSON
-	// или содержит OKX-ошибку, rate-limit информация всё равно полезна для
-	// внешнего rate-limiter'а (например, чтобы он не блокировал retry).
-	// Гарантия non-nil map в observer — упрощает подписчика (см. okx.Config).
+	// Notify observers BEFORE parsing the body: even if the response is invalid
+	// JSON or contains an OKX error, the rate-limit information is still useful
+	// for the external rate-limiter (e.g. to avoid blocking a retry).
+	// Non-nil map guarantee in observer — simplifies the subscriber (see okx.Config).
 	//
-	// Если заданы оба observer'а — оба вызываются последовательно. Порядок:
-	// сначала legacy (RateLimitObserver), потом event (RateLimitEventObserver).
-	// Это позволяет постепенно мигрировать существующих подписчиков, не теряя
-	// событий ни на одной стороне.
+	// If both observers are set, both are called in sequence. Order:
+	// legacy (RateLimitObserver) first, then event (RateLimitEventObserver).
+	// This enables gradual migration of existing subscribers without losing events
+	// on either side.
 	if c.rateLimitObserver != nil || c.rateLimitEventObserver != nil {
 		var hdrs map[string]string = rateLimits
 		if hdrs == nil {
@@ -256,14 +256,14 @@ func (c *Client) Do(ctx context.Context, opts Options) (Response, map[string]str
 		if err = codec.Unmarshal(raw, &resp); err != nil {
 			return resp, rateLimits, okxerr.New(okxerr.ErrorKindUnknown, "", "rest: parse response", err)
 		}
-		// OKX-семантика top-level code:
+		// OKX top-level code semantics:
 		//   "0"      — success;
-		//   "1"      — bulk error: ВСЕ элементы data[] упали (см. sCode/sMsg);
-		//   "2"      — bulk partial: часть элементов data[] упала;
-		//   прочее   — fatal на уровне запроса (auth, rate-limit, validation).
-		// Для "1" и "2" мы отдаём data наверх, чтобы domain-слой (Trading и т.п.)
-		// извлёк per-entry sCode/sMsg и собрал точную ошибку. Без этого
-		// пользователь видит бесполезное "All operations failed".
+		//   "1"      — bulk error: ALL data[] entries failed (see sCode/sMsg);
+		//   "2"      — bulk partial: some data[] entries failed;
+		//   other    — fatal at the request level (auth, rate-limit, validation).
+		// For "1" and "2" we pass data up so the domain layer (Trading, etc.)
+		// can extract per-entry sCode/sMsg and build a precise error. Without
+		// this the user sees the useless "All operations failed".
 		if resp.Code != "" && resp.Code != "0" && resp.Code != "1" && resp.Code != "2" {
 			return resp, rateLimits, &okxerr.Error{
 				Kind:       okxerr.MapOKXCode(resp.Code, resp.Msg),
@@ -290,7 +290,7 @@ func (c *Client) Do(ctx context.Context, opts Options) (Response, map[string]str
 	}
 }
 
-// buildRequest собирает URL и сериализованное тело.
+// buildRequest assembles the URL and serialized body.
 func (c *Client) buildRequest(opts Options) (string, string, error) {
 	var u *url.URL
 	var err error
@@ -314,7 +314,7 @@ func (c *Client) buildRequest(opts Options) (string, string, error) {
 	return u.String(), body, nil
 }
 
-// applyHeaders проставляет стандартные и подписанные заголовки.
+// applyHeaders sets standard and signed headers.
 func (c *Client) applyHeaders(req *http.Request, opts Options, body string) {
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", c.userAgent)
@@ -349,7 +349,7 @@ func (c *Client) applyHeaders(req *http.Request, opts Options, body string) {
 	req.Header.Set("OK-ACCESS-PASSPHRASE", c.signer.Passphrase())
 }
 
-// classifyTransportError превращает сетевую/ctx-ошибку в *okxerr.Error.
+// classifyTransportError converts a network/ctx error into a *okxerr.Error.
 func classifyTransportError(err error) error {
 	if err == nil {
 		return nil
@@ -363,7 +363,7 @@ func classifyTransportError(err error) error {
 	return okxerr.New(okxerr.ErrorKindNetwork, "", "rest: transport error", err)
 }
 
-// collectRateLimitHeaders собирает фиксированный набор заголовков.
+// collectRateLimitHeaders collects a fixed set of rate-limit headers.
 func collectRateLimitHeaders(h http.Header) map[string]string {
 	var out map[string]string
 	var v string

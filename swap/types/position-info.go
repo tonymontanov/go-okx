@@ -1,26 +1,26 @@
 /*
-ФАЙЛ: swap/types/position-info.go
+FILE: swap/types/position-info.go
 
-ОПИСАНИЕ:
-Структура с информацией о позиции SWAP.
+DESCRIPTION:
+SWAP position information struct.
 
-ПОЛЯ:
-  - InstID         — инструмент.
-  - PosSide        — long/short/net (для hedge-mode сценариев). В net-mode (default)
-                     всегда PosSideNet.
-  - Position       — размер позиции в контрактах. Знак (+/-) соответствует
-                     направлению в net-mode (+long, -short).
-  - AvgEntryPrice  — средняя цена входа.
-  - UnrealizedPnL  — нереализованный PnL в маржинальной валюте.
-  - LiqPrice       — ликвидационная цена (0 если не применимо).
-  - UpdatedAtMs    — таймштамп последнего обновления (uTime).
+FIELDS:
+  - InstID         — instrument.
+  - PosSide        — long/short/net (for hedge-mode scenarios). In net-mode (default)
+                     always PosSideNet.
+  - Position       — position size in contracts. Sign (+/-) indicates direction in
+                     net-mode (+long, -short).
+  - AvgEntryPrice  — average entry price.
+  - UnrealizedPnL  — unrealized PnL in the margin currency.
+  - LiqPrice       — liquidation price (0 if not applicable).
+  - UpdatedAtMs    — last update timestamp (uTime).
 */
 
 package types
 
 import "github.com/shopspring/decimal"
 
-// PositionInfo — информация о позиции SWAP.
+// PositionInfo — SWAP position information.
 type PositionInfo struct {
 	InstID        string
 	PosSide       PosSide

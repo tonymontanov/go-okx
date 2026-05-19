@@ -1,32 +1,32 @@
 /*
-ФАЙЛ: types/leverage-info.go
+FILE: types/leverage-info.go
 
-ОПИСАНИЕ:
-LeverageInfo — установленное плечо для инструмента в определённом режиме
-маржи (cross/isolated) и стороне позиции (long/short/net).
+DESCRIPTION:
+LeverageInfo — configured leverage for an instrument in a given margin mode
+(cross/isolated) and position side (long/short/net).
 
-Маппится из:
+Mapped from:
   - GET /api/v5/account/leverage-info?instId=...&mgnMode=...
 
-Один запрос может вернуть несколько записей, если у инструмента
-установлены разные плечи под разные posSide (long_short_mode).
+A single request may return multiple records if different leverages are
+configured for different posSide values (long_short_mode).
 */
 
 package types
 
 import "github.com/shopspring/decimal"
 
-// LeverageInfo — текущее плечо.
+// LeverageInfo — current leverage setting.
 type LeverageInfo struct {
-	// InstID — инструмент.
+	// InstID — instrument.
 	InstID string
-	// MgnMode — режим маржи ("cross" / "isolated") (mgnMode).
+	// MgnMode — margin mode ("cross" / "isolated") (mgnMode).
 	MgnMode string
-	// PosSide — сторона позиции (long/short/net) (posSide).
+	// PosSide — position side (long/short/net) (posSide).
 	PosSide string
-	// Lever — установленное плечо (lever).
+	// Lever — configured leverage (lever).
 	Lever decimal.Decimal
 }
 
-// LeverageInfos — слайс.
+// LeverageInfos — slice.
 type LeverageInfos []LeverageInfo

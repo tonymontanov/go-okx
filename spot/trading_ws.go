@@ -1,51 +1,51 @@
 /*
-ФАЙЛ: spot/trading_ws.go
+FILE: spot/trading_ws.go
 
-ОПИСАНИЕ:
-WSTradingClient — sub-client торговли через WebSocket Order API. Экспозит
-тот же набор операций, что и REST-вариант (CreateOrder/ModifyOrder/
-CancelOrder + батчи + MassCancel), но шлёт их через одно установленное
-private-WS соединение вместо HTTP/2 round-trip'а.
+DESCRIPTION:
+WSTradingClient — sub-client for trading via the WebSocket Order API. Exposes
+the same set of operations as the REST variant (CreateOrder/ModifyOrder/
+CancelOrder + batches + MassCancel), but sends them over an already established
+private-WS connection instead of an HTTP/2 round-trip.
 
-ЗАЧЕМ:
-Выигрыш в латентности vs REST на OKX (типично) — 30-50% time-to-exchange:
-снимается TLS handshake / HTTP framing / TCP slow-start, остаётся
-только TLS encrypt + write на уже установленный сокет + read reply.
-Для HFT MM это разница между «успели в очередь до toxic-flow» и нет.
+WHY:
+Latency gain vs REST on OKX (typical) — 30-50% time-to-exchange:
+TLS handshake / HTTP framing / TCP slow-start are eliminated; only
+TLS encrypt + write on an established socket + read reply remain.
+For HFT MM this is the difference between getting into the queue before
+toxic flow and not.
 
-ВАЖНО:
-  - WS-каналы Order API живут НА ТОМ ЖЕ private-WS conn, что и
-    subscriptions (orders/account/positions). Используется один
-    мультиплексированный socket; SendOp корректно correlate'ит reply
-    по id (см. internal/ws/conn.go).
-  - Payload-структура bodies полностью совпадает с REST: переиспользуем
-    buildCreateOrderBody/buildModifyOrderBody/buildCancelOrderBody из
-    trading.go, чтобы не плодить дублирующую логику валидации.
-  - Per-item reply OKX тот же orderActionResponseEntry (ordId/clOrdId/
-    tag/sCode/sMsg) — разбираем тем же кодом.
+IMPORTANT:
+  - WS Order API channels live ON THE SAME private-WS conn as subscriptions
+    (orders/account/positions). A single multiplexed socket is used; SendOp
+    correctly correlates replies by id (see internal/ws/conn.go).
+  - Payload body structure is identical to REST: reuses
+    buildCreateOrderBody/buildModifyOrderBody/buildCancelOrderBody from
+    trading.go to avoid duplicating validation logic.
+  - Per-item OKX replies use the same orderActionResponseEntry (ordId/clOrdId/
+    tag/sCode/sMsg) — parsed with the same code.
 
-ТАЙМАУТЫ:
-  - Дефолтный SendOp-таймаут не задан жёстко: используем ctx.Deadline()
-    как primary, плюс мягкий «sanity» 10 секунд через SendOp(.., 10s)
-    как защиту от подвисов при сбоях reply-pipeline.
+TIMEOUTS:
+  - The default SendOp timeout is not hardcoded: ctx.Deadline() is used as
+    the primary, plus a soft "sanity" 10-second timeout via SendOp(.., 10s)
+    as protection against hangs when the reply pipeline fails.
 
-RATE-LIMITS:
-  WS Order API у OKX имеет ОТДЕЛЬНЫЕ лимиты (значительно выше REST,
-  4000 orders/s суммарно для всех WS connections). Эти лимиты сейчас НЕ
-  моделируются в SDK (rate-limit observers подключены только к REST-
-  транспорту в internal/rest). Это сознательно: WS-лимиты редко
-  становятся узким местом, а инвазивная интеграция в WS-loop потребует
-  отдельной observer-API. Пользователь, который реально упирается в WS-
-  лимит, может вести свой счётчик поверх SDK.
+RATE LIMITS:
+  OKX WS Order API has SEPARATE limits (significantly higher than REST,
+  4000 orders/s across all WS connections). These limits are NOT currently
+  modelled in the SDK (rate-limit observers are connected to REST transport
+  in internal/rest only). This is intentional: WS limits rarely become a
+  bottleneck, and invasive integration into the WS loop would require a
+  separate observer API. A user who actually hits WS limits can maintain
+  their own counter on top of the SDK.
 
 ID:
-Per-команда генерируется свой correlation-id через SendOp (auto).
-clOrdId/tag валидируются теми же правилами, что и в REST.
+A per-command correlation id is generated automatically via SendOp.
+clOrdId/tag are validated by the same rules as in REST.
 
-ПРИМЕЧАНИЕ О ENSUREREADY:
-SendOp требует, чтобы сокет уже был установлен. Чтобы caller не получал
-ErrConnNotReady на первом вызове, WSTradingClient вызывает EnsureReady
-автоматически — это идемпотентно и блокируется до connect+login.
+NOTE ON ENSUREREADY:
+SendOp requires the socket to already be established. To prevent the caller
+from receiving ErrConnNotReady on the first call, WSTradingClient calls
+EnsureReady automatically — this is idempotent and blocks until connect+login.
 */
 
 package spot
@@ -62,32 +62,30 @@ import (
 	"github.com/tonymontanov/go-okx/v2/spot/types"
 )
 
-// WSDefaultTimeout — мягкий потолок на ожидание reply, если ctx-deadline
-// не выставлен. 10 секунд — заведомо больше реального WS round-trip
-// (десятки миллисекунд); защищает от зависаний при некорректном reply
-// pipeline на стороне биржи.
+// WSDefaultTimeout — soft ceiling for waiting on a reply when no ctx-deadline
+// is set. 10 seconds is well above the real WS round-trip (tens of milliseconds);
+// guards against hangs when the reply pipeline fails on the exchange side.
 const WSDefaultTimeout = 10 * time.Second
 
-// WSTradingClient — sub-client WS Order API. Возвращается через
-// TradingClient.WS().
+// WSTradingClient — WS Order API sub-client. Returned via TradingClient.WS().
 type WSTradingClient struct {
 	t *TradingClient
 }
 
-// WS возвращает WS-вариант торговли. Идемпотентно: один экземпляр на
-// TradingClient. Lazy: при первом вызове ничего не подключает; реальный
-// connect/login происходит при первом WS-методе.
+// WS returns the WS trading variant. Idempotent: one instance per TradingClient.
+// Lazy: nothing is connected on the first call; actual connect/login happens on
+// the first WS method invocation.
 func (t *TradingClient) WS() *WSTradingClient {
 	return &WSTradingClient{t: t}
 }
 
-// conn — лениво поднимает private WS-conn родительского клиента.
+// conn — lazily starts the parent client's private WS connection.
 func (w *WSTradingClient) conn() *ws.Conn {
 	return w.t.c.privateConn()
 }
 
-// ensureReady гарантирует, что private WS-conn запущен и socket
-// установлен (login пройден). Использует ctx caller'а для таймаута.
+// ensureReady guarantees that the private WS connection is started and the
+// socket is established (login completed). Uses the caller's ctx for timeout.
 func (w *WSTradingClient) ensureReady(ctx context.Context) error {
 	if !w.t.c.signerEnabled() {
 		return okx.NewError(okx.ErrorKindAuth, "", "ws trading: signer disabled (api credentials required)", nil)
@@ -96,9 +94,9 @@ func (w *WSTradingClient) ensureReady(ctx context.Context) error {
 }
 
 /*
-CreateOrder — WS-вариант создания одного ордера. Сигнатура идентична
-REST-варианту: пользователь может переключиться сменой .Trading() на
-.Trading().WS() без изменения тела вызова.
+CreateOrder — WS variant of single-order creation. Signature is identical to
+the REST variant: the caller can switch by replacing .Trading() with
+.Trading().WS() without changing the call body.
 */
 func (w *WSTradingClient) CreateOrder(ctx context.Context, req types.CreateOrderRequest) (types.OrderInfo, error) {
 	var info types.OrderInfo
@@ -146,7 +144,7 @@ func (w *WSTradingClient) CreateOrder(ctx context.Context, req types.CreateOrder
 }
 
 /*
-ModifyOrder — WS-вариант amend.
+ModifyOrder — WS variant of amend.
 */
 func (w *WSTradingClient) ModifyOrder(ctx context.Context, req types.ModifyOrderRequest) (types.OrderInfo, error) {
 	var info types.OrderInfo
@@ -191,7 +189,7 @@ func (w *WSTradingClient) ModifyOrder(ctx context.Context, req types.ModifyOrder
 }
 
 /*
-CancelOrder — WS-вариант cancel одного ордера.
+CancelOrder — WS variant of single-order cancel.
 */
 func (w *WSTradingClient) CancelOrder(ctx context.Context, req types.CancelOrderRequest) error {
 	var body map[string]any
@@ -225,9 +223,9 @@ func (w *WSTradingClient) CancelOrder(ctx context.Context, req types.CancelOrder
 }
 
 /*
-CreateBatchOrders — WS-вариант batch create. До MaxBatchSize за одну
-op-команду; при превышении автоматически разбивает на несколько
-последовательных op'ов (как REST-вариант).
+CreateBatchOrders — WS variant of batch create. Up to MaxBatchSize per single
+op-command; if exceeded, automatically splits into multiple sequential ops
+(same as the REST variant).
 */
 func (w *WSTradingClient) CreateBatchOrders(ctx context.Context, reqs []types.CreateOrderRequest) ([]types.OrderInfo, error) {
 	if len(reqs) == 0 {
@@ -332,7 +330,7 @@ func (w *WSTradingClient) createBatchChunkWS(ctx context.Context, chunk []types.
 }
 
 /*
-ModifyBatchOrders — WS-вариант amend-batch (до MaxBatchSize за op).
+ModifyBatchOrders — WS variant of amend-batch (up to MaxBatchSize per op).
 */
 func (w *WSTradingClient) ModifyBatchOrders(ctx context.Context, reqs []types.ModifyOrderRequest) ([]types.OrderInfo, error) {
 	if len(reqs) == 0 {
@@ -430,7 +428,7 @@ func (w *WSTradingClient) modifyBatchChunkWS(ctx context.Context, chunk []types.
 }
 
 /*
-CancelBatchOrders — WS-вариант cancel-batch.
+CancelBatchOrders — WS variant of cancel-batch.
 */
 func (w *WSTradingClient) CancelBatchOrders(ctx context.Context, reqs []types.CancelOrderRequest) error {
 	if len(reqs) == 0 {
@@ -503,20 +501,20 @@ func (w *WSTradingClient) cancelBatchChunkWS(ctx context.Context, chunk []types.
 }
 
 /*
-MassCancel — массовая отмена ордеров по группе. OKX op = "mass-cancel"
-принимает instType + instFamily; отменяет ВСЕ открытые ордера на всех
-инструментах указанной семьи. Применимо для SWAP/FUTURES/OPTION; для
-SPOT instFamily не определён и операция не имеет смысла.
+MassCancel — bulk order cancellation by group. OKX op = "mass-cancel"
+accepts instType + instFamily and cancels ALL open orders across all
+instruments in the specified family. Applicable for SWAP/FUTURES/OPTION;
+for SPOT instFamily is not defined and the operation does not make sense.
 
-ПРЕДУПРЕЖДЕНИЕ:
-MassCancel — destructive batch операция. В отличие от CancelBatchOrders
-здесь нет per-item контроля, чем именно отменять. Используйте только
-как panic-button (например при потере цены/feeda).
+WARNING:
+MassCancel is a destructive batch operation. Unlike CancelBatchOrders there
+is no per-item control over what exactly is cancelled. Use only as a panic
+button (e.g. on price/feed loss).
 
-ПРИМЕЧАНИЕ:
-Метод доступен в spot.WSTradingClient API для симметрии (один shape sub-
-client на оба профиля), но на SPOT возвращает 51400 от биржи —
-instFamily нет. Используйте swap.WSTradingClient.MassCancel.
+NOTE:
+The method is available in the spot.WSTradingClient API for symmetry (one
+sub-client shape for both profiles), but on SPOT the exchange returns 51400 —
+instFamily is absent. Use swap.WSTradingClient.MassCancel instead.
 */
 func (w *WSTradingClient) MassCancel(ctx context.Context, instType, instFamily string) error {
 	if instType == "" {
@@ -553,10 +551,10 @@ func (w *WSTradingClient) MassCancel(ctx context.Context, instType, instFamily s
 }
 
 /*
-CancelAllAfter — WS-вариант dead-man's switch (op="cancel-all-after").
-Семантика идентична REST-варианту в trading.go: timeout > 0 — арм
-(10..120s по spec OKX), timeout == 0 — disarm. Преимущество WS — лучшая
-латентность для refresh-цикла стратегии.
+CancelAllAfter — WS variant of the dead-man's switch (op="cancel-all-after").
+Semantics are identical to the REST variant in trading.go: timeout > 0 — arm
+(10..120s per OKX spec), timeout == 0 — disarm. WS advantage is lower latency
+for the strategy's refresh cycle.
 */
 func (w *WSTradingClient) CancelAllAfter(ctx context.Context, timeout time.Duration) (types.CancelAllAfterResult, error) {
 	var out types.CancelAllAfterResult
@@ -615,14 +613,14 @@ func (w *WSTradingClient) CancelAllAfter(ctx context.Context, timeout time.Durat
 }
 
 /*
-doOp — общая обёртка над SendOp: формирует OpRequest, ждёт reply,
-проверяет top-level code, парсит Data в массив orderActionResponseEntry.
+doOp — common wrapper over SendOp: builds the OpRequest, waits for the reply,
+checks the top-level code, and parses Data into an orderActionResponseEntry slice.
 
-ВНИМАНИЕ ОБ DISCONNECT'Е:
-Если соединение оборвалось во время SendOp, failAllPending в conn.go
-доставляет синтетический reply с Code="disconnected". Здесь мы
-конвертируем его в типизированную ошибку (Kind=Network), чтобы caller
-мог делать errors.Is/As и не вязнуть в парсинге code-строк.
+NOTE ON DISCONNECT:
+If the connection dropped during SendOp, failAllPending in conn.go delivers
+a synthetic reply with Code="disconnected". Here we convert it to a typed
+error (Kind=Network) so the caller can use errors.Is/As without parsing
+code strings.
 */
 func (w *WSTradingClient) doOp(ctx context.Context, op string, args []any) ([]orderActionResponseEntry, error) {
 	var resp ws.OpResponse

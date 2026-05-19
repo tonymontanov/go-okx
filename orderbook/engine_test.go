@@ -1,23 +1,23 @@
 /*
-ФАЙЛ: orderbook/engine_test.go
+FILE: orderbook/engine_test.go
 
-ОПИСАНИЕ:
-Unit-тесты OrderbookEngine. Покрытие:
-  - TestEngine_ApplySnapshot_Sorts:    snapshot корректно сортирует bid/ask.
-  - TestEngine_ApplyUpdate_NewLevels:  добавление новых уровней с обеих сторон.
-  - TestEngine_ApplyUpdate_RemoveZero: удаление уровня (size=0).
-  - TestEngine_ApplyUpdate_ChangeSize: обновление существующего уровня.
-  - TestEngine_GapSequence:            несовпадение prevSeqId → GapSequence,
-                                       локальное состояние не меняется.
-  - TestEngine_Checksum_OKXDocs:       пример из официальной документации OKX
-                                       (стакан + ожидаемый signed int32).
-  - TestEngine_Checksum_Mismatch:      checksum не совпадает → GapChecksum.
+DESCRIPTION:
+Unit tests for OrderbookEngine. Coverage:
+  - TestEngine_ApplySnapshot_Sorts:    snapshot correctly sorts bid/ask.
+  - TestEngine_ApplyUpdate_NewLevels:  adding new levels on both sides.
+  - TestEngine_ApplyUpdate_RemoveZero: removing a level (size=0).
+  - TestEngine_ApplyUpdate_ChangeSize: updating an existing level.
+  - TestEngine_GapSequence:            prevSeqId mismatch → GapSequence,
+                                       local state is not modified.
+  - TestEngine_Checksum_OKXDocs:       example from the official OKX docs
+                                       (order book + expected signed int32).
+  - TestEngine_Checksum_Mismatch:      checksum mismatch → GapChecksum.
 
-Для эталонного примера CRC32 использован канонический пример OKX:
+For the CRC32 reference example the canonical OKX example is used:
   bids = [(3366.1, 7), (3366,  6), (3365.9, 5)]
   asks = [(3366.8, 9), (3366.9, 8), (3367,   2)]
   pre-image: "3366.1:7:3366.8:9:3366:6:3366.9:8:3365.9:5:3367:2"
-  checksum (signed int32): 831078360 (см. примеры OKX docs).
+  checksum (signed int32): 831078360 (see OKX docs examples).
 */
 
 package orderbook
@@ -136,7 +136,7 @@ func TestEngine_GapSequence(t *testing.T) {
 	})
 	var res ApplyResult = eng.ApplyUpdate(Update{
 		Bids:      []types.OrderBookLevel{lvl("100", "2")},
-		PrevSeqID: 5, // не совпадает
+		PrevSeqID: 5, // does not match
 		SeqID:     11,
 	})
 	if res.Gap != GapSequence {
@@ -145,7 +145,7 @@ func TestEngine_GapSequence(t *testing.T) {
 	if !eng.IsDirty() {
 		t.Fatalf("engine must be marked dirty after sequence gap")
 	}
-	// локальное состояние не должно измениться
+	// local state must not change
 	var bids, _ = eng.TopLevels(10)
 	if !bids[0].Size.Equal(dec("1")) {
 		t.Fatalf("expected size=1 (no update), got %v", bids[0].Size)
@@ -155,10 +155,10 @@ func TestEngine_GapSequence(t *testing.T) {
 	}
 }
 
-// TestEngine_Checksum_BasicSelf проверяет, что движок выдаёт тот же CRC32, что
-// и эталонный расчёт по тому же pre-image на тех же данных. Это закрывает
-// риск регрессии в формате pre-image без зависимости от хардкода чисел из
-// внешнего источника.
+// TestEngine_Checksum_BasicSelf verifies that the engine produces the same CRC32
+// as the reference calculation over the same pre-image for the same data. This
+// guards against regressions in the pre-image format without depending on
+// hardcoded numbers from an external source.
 func TestEngine_Checksum_BasicSelf(t *testing.T) {
 	var bids []types.OrderBookLevel = []types.OrderBookLevel{
 		lvl("3366.1", "7"), lvl("3366", "6"), lvl("3365.9", "5"),
@@ -170,7 +170,7 @@ func TestEngine_Checksum_BasicSelf(t *testing.T) {
 	var eng *Engine = NewEngine("BTC-USDT-SWAP", 400, 25)
 	eng.ApplySnapshot(Snapshot{Bids: bids, Asks: asks, SeqID: 1})
 
-	// Эталонный pre-image согласно документации OKX (порядок: bid,ask,bid,ask,...).
+	// Reference pre-image per OKX documentation (order: bid,ask,bid,ask,...).
 	var expected string = "3366.1:7:3366.8:9:3366:6:3366.9:8:3365.9:5:3367:2"
 	var expectedSum int32 = int32(crc32.ChecksumIEEE([]byte(expected)))
 
@@ -183,8 +183,8 @@ func TestEngine_Checksum_BasicSelf(t *testing.T) {
 	}
 }
 
-// TestEngine_Checksum_Mismatch — при заведомо неверном переданном checksum'е
-// движок должен помечать апдейт как GapChecksum и выставлять dirty.
+// TestEngine_Checksum_Mismatch — when an intentionally incorrect checksum is
+// supplied, the engine must mark the update as GapChecksum and set dirty.
 func TestEngine_Checksum_Mismatch(t *testing.T) {
 	var eng *Engine = NewEngine("BTC-USDT-SWAP", 400, 25)
 	eng.ApplySnapshot(Snapshot{
@@ -193,12 +193,12 @@ func TestEngine_Checksum_Mismatch(t *testing.T) {
 		SeqID: 1,
 	})
 
-	// Применяем апдейт с заведомо «фальшивым» checksum'ом.
+	// Apply an update with an intentionally bogus checksum.
 	var res ApplyResult = eng.ApplyUpdate(Update{
 		Bids:      []types.OrderBookLevel{lvl("100", "2")},
 		PrevSeqID: 1,
 		SeqID:     2,
-		Checksum:  -1, // явно не совпадает с реальным
+		Checksum:  -1, // deliberately does not match the real value
 	})
 	if res.Gap != GapChecksum {
 		t.Fatalf("expected GapChecksum, got %v", res.Gap)
@@ -208,7 +208,7 @@ func TestEngine_Checksum_Mismatch(t *testing.T) {
 	}
 }
 
-// TestEngine_TopLevels_LimitDepth — TopLevels возвращает не больше n уровней.
+// TestEngine_TopLevels_LimitDepth — TopLevels returns no more than n levels.
 func TestEngine_TopLevels_LimitDepth(t *testing.T) {
 	var eng *Engine = NewEngine("BTC-USDT-SWAP", 400, 25)
 	eng.ApplySnapshot(Snapshot{
@@ -222,8 +222,8 @@ func TestEngine_TopLevels_LimitDepth(t *testing.T) {
 	}
 }
 
-// TestEngine_MaxDepth_Trim — если в snapshot пришло больше maxDepth уровней,
-// движок должен их обрезать.
+// TestEngine_MaxDepth_Trim — if the snapshot contains more than maxDepth levels,
+// the engine must trim them.
 func TestEngine_MaxDepth_Trim(t *testing.T) {
 	var eng *Engine = NewEngine("BTC-USDT-SWAP", 2, 25)
 	eng.ApplySnapshot(Snapshot{

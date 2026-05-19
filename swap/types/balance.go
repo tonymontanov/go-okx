@@ -1,20 +1,20 @@
 /*
-ФАЙЛ: swap/types/balance.go
+FILE: swap/types/balance.go
 
-ОПИСАНИЕ:
-Модель ответа GET /api/v5/account/balance для SWAP-профиля. С момента
-выделения общего слоя — type-alias на commontypes.Balance/BalanceDetail
-(OKX использует unified-account; модель идентична для spot и swap).
+DESCRIPTION:
+Response model for GET /api/v5/account/balance for the SWAP profile. Since
+the common layer was extracted — a type alias for commontypes.Balance/BalanceDetail
+(OKX uses unified-account; the model is identical for spot and swap).
 
-Документация — в types/balance.go.
+Documentation is in types/balance.go.
 */
 
 package types
 
 import commontypes "github.com/tonymontanov/go-okx/v2/types"
 
-// Balance — состояние unified-account. См. commontypes.Balance.
+// Balance — unified-account state. See commontypes.Balance.
 type Balance = commontypes.Balance
 
-// BalanceDetail — баланс одной валюты. См. commontypes.BalanceDetail.
+// BalanceDetail — balance for a single currency. See commontypes.BalanceDetail.
 type BalanceDetail = commontypes.BalanceDetail

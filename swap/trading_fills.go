@@ -1,10 +1,10 @@
 /*
-ФАЙЛ: swap/trading_fills.go
+FILE: swap/trading_fills.go
 
-ОПИСАНИЕ:
-REST-методы получения fills для SWAP-профиля. Структурно зеркальны
-spot/trading_fills.go: те же query-параметры, тот же rawFillPush,
-тот же convertFill. Различие — фильтр instType="SWAP".
+DESCRIPTION:
+REST methods for retrieving fills for the SWAP profile. Structurally mirrors
+spot/trading_fills.go: same query parameters, same rawFillPush,
+same convertFill. The difference is the instType="SWAP" filter.
 */
 
 package swap
@@ -19,19 +19,19 @@ import (
 	"github.com/tonymontanov/go-okx/v2/swap/types"
 )
 
-// GetFills — последние 3 дня исполнений SWAP.
+// GetFills — last 3 days of SWAP fills.
 func (t *TradingClient) GetFills(ctx context.Context, q types.FillsQuery) ([]types.Fill, error) {
 	return t.fetchFills(ctx, "/api/v5/trade/fills", q)
 }
 
-// GetFillsHistory — до 3 месяцев исполнений SWAP.
+// GetFillsHistory — up to 3 months of SWAP fills.
 func (t *TradingClient) GetFillsHistory(ctx context.Context, q types.FillsQuery) ([]types.Fill, error) {
 	return t.fetchFills(ctx, "/api/v5/trade/fills-history", q)
 }
 
 /*
-GetFill возвращает все fills конкретного ордера (опц. фильтр по tradeID).
-Реализация — GetFills с фильтром по ordID + пост-фильтрация по tradeID.
+GetFill returns all fills for a specific order (optional filter by tradeID).
+Implementation — GetFills filtered by ordID + post-filter by tradeID.
 */
 func (t *TradingClient) GetFill(ctx context.Context, instID, ordID, tradeID string) ([]types.Fill, error) {
 	if ordID == "" {

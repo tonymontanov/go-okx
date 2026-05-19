@@ -1,8 +1,8 @@
 /*
-ФАЙЛ: swap/account.go
+FILE: swap/account.go
 
-ОПИСАНИЕ:
-Доменный саб-клиент аккаунта/позиций SWAP. Реализует:
+DESCRIPTION:
+Domain sub-client for SWAP account/position operations. Implements:
   - GetBalance                       : GET /api/v5/account/balance[?ccy=...]
   - GetPosition / GetSymbolPosition  : GET /api/v5/account/positions?instType=SWAP&instId=...
   - GetOpenOrders                    : GET /api/v5/trade/orders-pending?instType=SWAP&instId=...
@@ -10,13 +10,13 @@
   - SetLeverage                      : POST /api/v5/account/set-leverage
   - SetPositionMode                  : POST /api/v5/account/set-position-mode
 
-ОСОБЕННОСТИ OKX:
-  - В net-mode (default) у инструмента может быть максимум одна позиция:
-    знак Position указывает на сторону (+long/-short). PosSide всегда "net".
-  - В hedge-mode (long_short_mode) у одного инструмента может быть до двух
-    позиций (long + short). В v1 мы возвращаем массив; helper GetSymbolPosition
-    с режимом по умолчанию (net) выбирает первую запись.
-  - ClosePosition позволяет закрыть рыночно — без необходимости знать size.
+OKX SPECIFICS:
+  - In net-mode (default) an instrument can have at most one position:
+    the sign of Position indicates direction (+long/-short). PosSide is always "net".
+  - In hedge-mode (long_short_mode) one instrument can have up to two
+    positions (long + short). In v1 we return an array; the GetSymbolPosition
+    helper with the default (net) mode picks the first entry.
+  - ClosePosition allows a market close without needing to know the size.
 */
 
 package swap
@@ -32,7 +32,7 @@ import (
 	"github.com/tonymontanov/go-okx/v2/swap/types"
 )
 
-// AccountClient — саб-клиент аккаунта/позиций.
+// AccountClient — account/positions sub-client.
 type AccountClient struct {
 	c *Client
 }
@@ -41,7 +41,7 @@ func newAccountClient(c *Client) *AccountClient {
 	return &AccountClient{c: c}
 }
 
-// rawBalanceDetail — сырой формат per-currency элемента из /account/balance.
+// rawBalanceDetail — raw format of a per-currency entry from /account/balance.
 type rawBalanceDetail struct {
 	Ccy       string `json:"ccy"`
 	Eq        string `json:"eq"`
@@ -58,7 +58,7 @@ type rawBalanceDetail struct {
 	UTime     string `json:"uTime"`
 }
 
-// rawBalance — сырой формат top-level элемента из /account/balance.
+// rawBalance — raw format of the top-level entry from /account/balance.
 type rawBalance struct {
 	TotalEq     string             `json:"totalEq"`
 	AdjEq       string             `json:"adjEq"`
@@ -73,16 +73,16 @@ type rawBalance struct {
 }
 
 /*
-GetBalance возвращает unified-account баланс. Если переданы валюты — фильтрует
-ответ OKX по ним (передаётся параметр ccy=BTC,USDT). Без аргументов вернутся
-все валюты, по которым у аккаунта есть какой-либо баланс/позиция.
+GetBalance returns the unified-account balance. If currencies are provided,
+the OKX response is filtered by them (ccy=BTC,USDT parameter). Without
+arguments all currencies with any balance/position are returned.
 
 ENDPOINT: GET /api/v5/account/balance[?ccy=BTC,USDT]
 
-ВНИМАНИЕ:
-  - Эндпоинт возвращает массив из ровно одного элемента (по дизайну OKX).
-  - В Demo-режиме (Config.Demo=true) баланс возвращается из песочницы, а не
-    из реального портфеля.
+NOTE:
+  - The endpoint returns an array of exactly one element (by OKX design).
+  - In Demo mode (Config.Demo=true) the balance comes from the sandbox, not
+    the real portfolio.
 */
 func (a *AccountClient) GetBalance(ctx context.Context, ccy ...string) (types.Balance, error) {
 	var q url.Values
@@ -100,7 +100,7 @@ func (a *AccountClient) GetBalance(ctx context.Context, ccy ...string) (types.Ba
 		Signed: true,
 		Meta: rest.RequestMeta{
 			Category: string(okx.RateLimitCategoryQuery),
-			// Symbols пустой: balance не per-instrument.
+			// Symbols empty: balance is not per-instrument.
 		},
 	})
 	if err != nil {
@@ -151,7 +151,7 @@ func convertBalance(r rawBalance) types.Balance {
 	return out
 }
 
-// rawPositionEntry — сырой ответ /account/positions (только используемые поля).
+// rawPositionEntry — raw response from /account/positions (used fields only).
 type rawPositionEntry struct {
 	InstID  string `json:"instId"`
 	PosSide string `json:"posSide"`
@@ -163,8 +163,8 @@ type rawPositionEntry struct {
 }
 
 /*
-GetPositions возвращает все открытые позиции по SWAP-инструменту (1 в net-mode,
-до 2 в hedge-mode). Если позиции нет — пустой слайс, не ошибка.
+GetPositions returns all open positions for a SWAP instrument (1 in net-mode,
+up to 2 in hedge-mode). If there is no position — returns an empty slice, not an error.
 */
 func (a *AccountClient) GetPositions(ctx context.Context, instID string) ([]types.PositionInfo, error) {
 	if instID == "" {
@@ -215,9 +215,9 @@ func (a *AccountClient) GetPositions(ctx context.Context, instID string) ([]type
 }
 
 /*
-GetSymbolPosition возвращает позицию для одного инструмента в net-mode (или
-первую, если по какой-то причине пришло несколько). В hedge-mode используйте
-GetPositions и фильтруйте по PosSide самостоятельно.
+GetSymbolPosition returns the position for a single instrument in net-mode (or
+the first one if multiple arrived for some reason). In hedge-mode use
+GetPositions and filter by PosSide yourself.
 */
 func (a *AccountClient) GetSymbolPosition(ctx context.Context, instID string) (types.PositionInfo, error) {
 	var positions []types.PositionInfo
@@ -232,8 +232,8 @@ func (a *AccountClient) GetSymbolPosition(ctx context.Context, instID string) (t
 	return positions[0], nil
 }
 
-// rawOpenOrderEntry — сырой ответ /trade/orders-pending. Поля совпадают с
-// /trade/order-history (используется как структура и там).
+// rawOpenOrderEntry — raw response from /trade/orders-pending. Fields match
+// /trade/order-history (the same struct is used there too).
 type rawOpenOrderEntry struct {
 	InstID    string `json:"instId"`
 	OrdID     string `json:"ordId"`
@@ -250,10 +250,10 @@ type rawOpenOrderEntry struct {
 }
 
 /*
-GetOpenOrders возвращает все активные ордера по инструменту. OKX возвращает до
-100 за вызов, в SDK мы НЕ делаем пагинацию — в реальном HFT-сценарии 100
-открытых ордеров на инструмент это уже много; если нужно больше, добавим
-итерацию по beforeID позже.
+GetOpenOrders returns all active orders for an instrument. OKX returns up to
+100 per call; the SDK does NOT paginate — in a real HFT scenario 100 open
+orders on one instrument is already a lot; if more is needed, iteration by
+beforeID can be added later.
 */
 func (a *AccountClient) GetOpenOrders(ctx context.Context, instID string) ([]types.OrderInfo, error) {
 	if instID == "" {
@@ -314,11 +314,11 @@ func (a *AccountClient) GetOpenOrders(ctx context.Context, instID string) ([]typ
 }
 
 /*
-ClosePosition закрывает позицию рыночно. Использует
-POST /api/v5/trade/close-position. mgnMode по умолчанию cross.
+ClosePosition closes a position at market. Uses
+POST /api/v5/trade/close-position. mgnMode defaults to cross.
 
-Если позиции нет — OKX вернёт ошибку 51400/51169; мы возвращаем её как есть,
-вызывающий код решает, является ли это «нормальной» ситуацией.
+If there is no position — OKX returns error 51400/51169; returned as-is,
+the caller decides whether this is a "normal" situation.
 */
 func (a *AccountClient) ClosePosition(ctx context.Context, instID string) error {
 	if instID == "" {
@@ -338,9 +338,9 @@ func (a *AccountClient) ClosePosition(ctx context.Context, instID string) error 
 		Body:   body,
 		Signed: true,
 		Meta: rest.RequestMeta{
-			// close-position шлёт market-order под капотом — учитываем
-			// как Place (списываем из sub-account 1000/2s бюджета и из
-			// per-symbol budget). OrderCount=1 потому что один market-close.
+			// close-position sends a market-order internally — counted as
+			// Place (charged against sub-account 1000/2s budget and
+			// per-symbol budget). OrderCount=1 because one market-close.
 			OrderCount: 1,
 			Symbols:    []string{instID},
 			Category:   string(okx.RateLimitCategoryPlace),
@@ -354,9 +354,9 @@ func (a *AccountClient) ClosePosition(ctx context.Context, instID string) error 
 }
 
 /*
-SetLeverage устанавливает плечо для инструмента и mgnMode. По умолчанию для
-SWAP — cross. В hedge-mode (long_short_mode) дополнительно требуется posSide;
-SDK здесь устанавливает плечо для обеих сторон.
+SetLeverage sets the leverage for an instrument and mgnMode. Default for
+SWAP is cross. In hedge-mode (long_short_mode) posSide is additionally required;
+the SDK sets leverage for both sides here.
 */
 func (a *AccountClient) SetLeverage(ctx context.Context, instID string, leverage int64) error {
 	if instID == "" {
@@ -391,8 +391,8 @@ func (a *AccountClient) SetLeverage(ctx context.Context, instID string, leverage
 }
 
 /*
-SetPositionMode задаёт режим позиций аккаунта (net_mode / long_short_mode).
-Действует на весь аккаунт. SDK по умолчанию ориентирован на net_mode.
+SetPositionMode sets the account position mode (net_mode / long_short_mode).
+Applies to the entire account. The SDK defaults to net_mode.
 */
 func (a *AccountClient) SetPositionMode(ctx context.Context, oneWay bool) error {
 	var mode types.PositionMode = types.PositionModeNet
@@ -408,7 +408,7 @@ func (a *AccountClient) SetPositionMode(ctx context.Context, oneWay bool) error 
 		Body:   body,
 		Signed: true,
 		Meta: rest.RequestMeta{
-			// set-position-mode account-wide, instId не передаётся.
+			// set-position-mode is account-wide, instId is not passed.
 			Category: string(okx.RateLimitCategoryQuery),
 		},
 	})

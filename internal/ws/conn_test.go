@@ -1,21 +1,21 @@
 /*
-ФАЙЛ: internal/ws/conn_test.go
+FILE: internal/ws/conn_test.go
 
-ОПИСАНИЕ:
-Тесты WS Conn. Покрывают:
-  - TestConn_Connect_Subscribe_Receive: базовый happy-path — подключение,
-    подписка, получение push-сообщения и его диспатч в handler.
-  - TestConn_AutoResubscribeAfterReconnect: при reconnect все подписки
-    отправляются повторно (resubscribe прозрачен для пользователя). Reset
-    у подписок вызывается перед resubscribe.
-  - TestConn_PingPong: клиент шлёт текстовый "ping" с заданным интервалом.
-  - TestConn_PrivateLogin: на private endpoint клиент сначала делает login.
-  - TestConn_DispatchOnInstTypeOnly: подписка без InstID (с InstType) — push
-    с InstID попадает в handler через fallback по channel-key.
-  - TestConn_DroppedMessageCounter: невалидный JSON ⇒ инкрементится dropped.
+DESCRIPTION:
+WS Conn tests. Cover:
+  - TestConn_Connect_Subscribe_Receive: basic happy-path — connect,
+    subscribe, receive push message, dispatch to handler.
+  - TestConn_AutoResubscribeAfterReconnect: on reconnect all subscriptions are
+    re-sent (resubscribe is transparent to the user). Reset on subscriptions is
+    called before resubscribe.
+  - TestConn_PingPong: client sends text "ping" at the given interval.
+  - TestConn_PrivateLogin: on a private endpoint the client performs login first.
+  - TestConn_DispatchOnInstTypeOnly: subscription without InstID (with InstType) —
+    push with InstID reaches the handler via channel-key fallback.
+  - TestConn_DroppedMessageCounter: invalid JSON ⇒ dropped counter is incremented.
 
-Локальный mock-server использует gorilla/websocket Upgrader; никаких внешних
-зависимостей или сети наружу.
+Local mock-server uses gorilla/websocket Upgrader; no external dependencies or
+outbound network.
 */
 
 package ws
@@ -37,14 +37,14 @@ import (
 	"github.com/tonymontanov/go-okx/v2/internal/okxmet"
 )
 
-// testCounter — самый простой counter с atomic-инкрементом для метрик в тестах.
+// testCounter — simplest counter with atomic increment for test metrics.
 type testCounter struct{ v atomic.Int64 }
 
 func (c *testCounter) Inc()              { c.v.Add(1) }
 func (c *testCounter) Add(d float64)     { c.v.Add(int64(d)) }
 func (c *testCounter) Value() int64      { return c.v.Load() }
 
-// testFactory — тестовая фабрика метрик, индексирует counters по имени.
+// testFactory — test metrics factory, indexes counters by name.
 type testFactory struct {
 	mu sync.Mutex
 	m  map[string]*testCounter
@@ -74,26 +74,25 @@ func (f *testFactory) Get(name string) int64 {
 	return 0
 }
 
-// serverScript — описание поведения mock-сервера для одного теста.
+// serverScript — describes mock-server behavior for a single test.
 type serverScript struct {
-	// onSubscribe вызывается при получении op="subscribe". Возвращает список
-	// JSON-сообщений, которые сервер сразу пошлёт клиенту после subscribe.
+	// onSubscribe is called when op="subscribe" is received. Returns a list of
+	// JSON messages the server immediately sends to the client after subscribe.
 	onSubscribe func(arg subscribeArg) []string
-	// onLogin вызывается при op="login". Возвращает строку, которую сервер
-	// пошлёт обратно. Если пуст — сервер шлёт стандартный {"event":"login","code":"0"}.
+	// onLogin is called when op="login". Returns the string the server sends
+	// back. If empty — server sends the default {"event":"login","code":"0"}.
 	onLogin func(arg loginArg) string
-	// recordReceived накапливает все принятые от клиента сообщения.
+	// recordReceived accumulates all messages received from the client.
 	recordReceived func(message string)
-	// onOp вызывается при любой op-команде с id (order/cancel-order/amend-order/
-	// batch-orders/cancel-batch-orders/amend-batch-orders/mass-cancel и т.д.).
-	// Возвращает список JSON-сообщений, которые сервер шлёт обратно. Если
-	// функция nil — сервер тихо игнорирует команду (используется для тестов
-	// таймаутов).
+	// onOp is called for any op-command with an id (order/cancel-order/amend-order/
+	// batch-orders/cancel-batch-orders/amend-batch-orders/mass-cancel, etc.).
+	// Returns a list of JSON messages the server sends back. If the function is
+	// nil — the server silently ignores the command (used for timeout tests).
 	onOp func(id, op string, raw string) []string
 }
 
-// startWsServer запускает мок-сервер OKX-style на свободном порту.
-// Возвращает URL (ws://...) и io-closer для финализации.
+// startWsServer starts an OKX-style mock server on a free port.
+// Returns the URL (ws://...) and a closer for cleanup.
 func startWsServer(t *testing.T, script serverScript) (string, *httptest.Server) {
 	t.Helper()
 
@@ -124,13 +123,13 @@ func startWsServer(t *testing.T, script serverScript) (string, *httptest.Server)
 			if script.recordReceived != nil {
 				script.recordReceived(string(message))
 			}
-			var s string = string(message)
-			if s == "ping" {
-				_ = c.WriteMessage(websocket.TextMessage, []byte("pong"))
-				continue
-			}
-			// сперва пробуем как op-request с id (WS Order API):
-			// у него есть и id, и op, а у subscribe/unsubscribe/login id нет.
+		var s string = string(message)
+		if s == "ping" {
+			_ = c.WriteMessage(websocket.TextMessage, []byte("pong"))
+			continue
+		}
+		// first try as op-request with id (WS Order API):
+		// it has both id and op; subscribe/unsubscribe/login have no id.
 			var idProbe opRequestMessage
 			if err = codec.Unmarshal(message, &idProbe); err == nil && idProbe.ID != "" && idProbe.Op != "" {
 				if script.onOp != nil {
@@ -143,7 +142,7 @@ func startWsServer(t *testing.T, script serverScript) (string, *httptest.Server)
 				continue
 			}
 
-			// разбираем как opRequest
+			// parse as opRequest
 			var req opRequest
 			if err = codec.Unmarshal(message, &req); err == nil && req.Op != "" {
 				switch req.Op {
@@ -186,8 +185,8 @@ func startWsServer(t *testing.T, script serverScript) (string, *httptest.Server)
 	return u, srv
 }
 
-// waitFor ждёт, пока condition() не вернёт true, максимум timeout.
-// Возвращает true, если успели.
+// waitFor waits until condition() returns true, up to the given timeout.
+// Returns true if it succeeded in time.
 func waitFor(timeout time.Duration, condition func() bool) bool {
 	var deadline time.Time = time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
@@ -284,7 +283,7 @@ func TestConn_AutoResubscribeAfterReconnect(t *testing.T) {
 		t.Fatalf("server did not see initial subscribe")
 	}
 
-	// Force reconnect: убиваем сервер, поднимаем новый на том же URL
+	// Force reconnect: kill the server, bring up a new one on the same URL
 	srv.Close()
 	url, srv = startWsServer(t, serverScript{
 		onSubscribe: func(arg subscribeArg) []string {
@@ -292,10 +291,10 @@ func TestConn_AutoResubscribeAfterReconnect(t *testing.T) {
 			return nil
 		},
 	})
-	// httptest.Server каждый раз получает новый порт; здесь нам важна сама
-	// логика — клиент должен попытаться переподключиться. Поэтому подменяем
-	// URL внутри Conn'а через перезапуск Conn с тем же ctx — этот тест
-	// эмулирует именно подписку на тот же URL в новом инстансе.
+	// httptest.Server gets a new port each time; here we care about the logic —
+	// the client must attempt to reconnect. So we swap the URL inside Conn via
+	// restarting Conn with the same ctx — this test emulates a subscription to
+	// the same URL in a new instance.
 	_ = c.Close()
 	defer srv.Close()
 
@@ -338,7 +337,7 @@ func TestConn_PingPong(t *testing.T) {
 	ctx, cancel = context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
 	c.Start(ctx)
-	// триггерим установку соединения через любую подписку
+	// trigger connection establishment via any subscription
 	_ = c.Subscribe(&Subscription{
 		Channel: "trades",
 		InstID:  "BTC-USDT-SWAP",
@@ -390,7 +389,7 @@ func TestConn_DispatchOnInstTypeOnly(t *testing.T) {
 	var srv *httptest.Server
 	url, srv = startWsServer(t, serverScript{
 		onSubscribe: func(arg subscribeArg) []string {
-			// Сервер шлёт сообщение БЕЗ instId в arg (как для каналов positions/orders).
+			// Server sends message WITHOUT instId in arg (as for positions/orders channels).
 			return []string{`{"arg":{"channel":"positions","instType":"SWAP"},"data":[{"instId":"BTC-USDT-SWAP","pos":"1"}]}`}
 		},
 	})

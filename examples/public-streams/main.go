@@ -1,19 +1,19 @@
 /*
-ФАЙЛ: examples/public-streams/main.go
+FILE: examples/public-streams/main.go
 
-ОПИСАНИЕ:
-Подписывается на ВСЕ публичные WS-стримы SDK одновременно. Печатает по одному
-агрегированному status-line раз в 500 ms, чтобы вывод оставался читаемым.
-Ключи и .env НЕ требуются. Работает до Ctrl-C.
+DESCRIPTION:
+Subscribes to ALL public WS streams of the SDK simultaneously. Prints one
+aggregated status-line every 500 ms to keep the output readable.
+Keys and .env are NOT required. Runs until Ctrl-C.
 
-ПОКРЫТИЕ:
+COVERAGE:
   - swap.Stream().WatchSpread       (bbo-tbt)
   - swap.Stream().WatchMarkPrice    (mark-price)
   - swap.Stream().WatchIndexPrice   (index-tickers)
   - swap.Stream().WatchLastPrice    (trades, price+ts)
-  - swap.Stream().WatchAggTrades    (trades, полный AggTrade)
+  - swap.Stream().WatchAggTrades    (trades, full AggTrade)
 
-ЗАПУСК:
+RUN:
     go run ./examples/public-streams
     OKX_INSTRUMENT=ETH-USDT-SWAP go run ./examples/public-streams
 */
@@ -38,7 +38,7 @@ import (
 	"github.com/tonymontanov/go-okx/v2/swap/types"
 )
 
-// snapshot — атомарное состояние, обновляемое из разных каналов.
+// snapshot — atomic state, updated from different channels.
 type snapshot struct {
 	mu sync.RWMutex
 
@@ -120,7 +120,7 @@ func main() {
 	err = swap.Stream().WatchAggTrades(ctx, instID,
 		func(t types.AggTrade) {
 			s.tradesCount.Add(1)
-			_ = t // вся информация уже учтена в lastPrice; здесь только счётчик
+			_ = t // all information is already captured in lastPrice; this is counter-only
 		}, streamErr)
 	if err != nil {
 		log.Fatalf("WatchAggTrades: %v", err)

@@ -1,54 +1,54 @@
 /*
-ФАЙЛ: types/liquidation.go
+FILE: types/liquidation.go
 
-ОПИСАНИЕ:
-Liquidation — одна запись о ликвидации позиции на бирже.
+DESCRIPTION:
+Liquidation — a single position liquidation record on the exchange.
 
-Маппится из:
+Mapped from:
   - GET /api/v5/public/liquidation-orders?instType=...&...
   - WS public channel "liquidation-orders"
 
-ПРИМЕЧАНИЕ ОБ АГРЕГАЦИИ:
-В WS-канале OKX обычно агрегирует ликвидации по инструменту (envelope
-содержит instId, далее массив details). На уровне SDK мы разворачиваем
-в плоский []Liquidation и доставляем доменному слою.
+NOTE ON AGGREGATION:
+In the WS channel OKX typically aggregates liquidations by instrument
+(the envelope contains instId followed by a details array). At the SDK level
+we flatten to []Liquidation and deliver to the domain layer.
 
-HFT-применение:
-  - cascading liquidation signal: серия Liquidation за короткий
-    интервал → ожидание spike-volatility/reversal;
-  - ставка против over-leveraged side: считаем баланс sell-vs-buy
-    ликвидаций в окне.
+HFT usage:
+  - cascading liquidation signal: a series of Liquidation events in a short
+    interval → anticipate spike-volatility/reversal;
+  - fade the over-leveraged side: track the sell-vs-buy balance of
+    liquidations in a window.
 */
 
 package types
 
 import "github.com/shopspring/decimal"
 
-// Liquidation — одна ликвидация.
+// Liquidation — one liquidation record.
 type Liquidation struct {
-	// InstType — тип инструмента (SWAP/FUTURES/MARGIN/OPTION).
+	// InstType — instrument type (SWAP/FUTURES/MARGIN/OPTION).
 	InstType InstType
-	// InstID — идентификатор инструмента.
+	// InstID — instrument identifier.
 	InstID string
-	// Ccy — валюта (для MARGIN; для остальных пустая).
+	// Ccy — currency (for MARGIN; empty for others).
 	Ccy string
-	// Side — сторона ликвидации taker (buy = ликвидируется short,
-	// sell = ликвидируется long).
+	// Side — taker side of the liquidation (buy = short being liquidated,
+	// sell = long being liquidated).
 	Side SideType
-	// PosSide — сторона позиции (long/short/net). Для one-way mode
-	// будет net; для long-short mode — long или short.
+	// PosSide — position side (long/short/net). In one-way mode will be
+	// net; in long-short mode — long or short.
 	PosSide string
-	// Sz — размер ликвидированной позиции в контрактах (sz).
+	// Sz — liquidated position size in contracts (sz).
 	Sz decimal.Decimal
-	// BankruptcyPx — bankruptcy price (bkPx), цена, при которой equity
-	// позиции равно нулю.
+	// BankruptcyPx — bankruptcy price (bkPx): the price at which position
+	// equity equals zero.
 	BankruptcyPx decimal.Decimal
-	// BankruptcyLoss — суммарный loss, перекрытый insurance fund
-	// (bkLoss). 0, если ликвидация прошла без bankruptcy.
+	// BankruptcyLoss — total loss covered by the insurance fund
+	// (bkLoss). 0 if the liquidation completed without bankruptcy.
 	BankruptcyLoss decimal.Decimal
-	// Ts — таймштамп ликвидации в мс (ts).
+	// Ts — liquidation timestamp in ms (ts).
 	Ts int64
 }
 
-// Liquidations — слайс ликвидаций.
+// Liquidations — slice of liquidations.
 type Liquidations []Liquidation

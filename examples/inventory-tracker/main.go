@@ -1,35 +1,35 @@
 /*
-ФАЙЛ: examples/inventory-tracker/main.go
+FILE: examples/inventory-tracker/main.go
 
-ОПИСАНИЕ:
-ВНИМАНИЕ: этот пример СОВЕРШАЕТ РЕАЛЬНУЮ СДЕЛКУ на бирже. Он:
-  1. подписывается на private WS-каналы `positions` и `orders`;
-  2. печатает текущее состояние позиции по инструменту;
-  3. отправляет МАРКЕТ-BUY минимального размера (1 контракт по умолчанию);
-  4. в реальном времени показывает, как меняются позиция и ордера;
-  5. через несколько секунд закрывает позицию через ClosePosition();
-  6. печатает финальное состояние и завершается.
+DESCRIPTION:
+WARNING: this example PLACES A REAL TRADE on the exchange. It:
+  1. subscribes to private WS channels `positions` and `orders`;
+  2. prints the current position state for the instrument;
+  3. sends a MARKET-BUY of minimum size (1 contract by default);
+  4. shows in real time how the position and orders change;
+  5. after a few seconds closes the position via ClosePosition();
+  6. prints the final state and exits.
 
-Между шагами 3 и 5 пользователь видит «живой» инвентарь — это smoke-test
-связки REST trading + WS private streams.
+Between steps 3 and 5 the user sees a "live" inventory — this is a smoke-test
+of the REST trading + WS private streams integration.
 
-КОНФИГ:
-  - OKX_INSTRUMENT (default BTC-USDT-SWAP) — какой инструмент торгуем.
-    Для тестов с минимальным риском возьмите дешёвый: например
-    DOGE-USDT-SWAP (1 contract ≈ 1000 DOGE × текущая цена / 1000 = $X).
-  - OKX_SIZE (default 1) — размер ордера в контрактах. Минимум — MinSize
-    инструмента (см. account-info или market-data).
-  - OKX_HOLD_SECONDS (default 5) — сколько секунд держать позицию открытой.
+CONFIG:
+  - OKX_INSTRUMENT (default BTC-USDT-SWAP) — the instrument to trade.
+    For low-risk tests use a cheap one, e.g.
+    DOGE-USDT-SWAP (1 contract ≈ 1000 DOGE × current price / 1000 = $X).
+  - OKX_SIZE (default 1) — order size in contracts. Minimum is MinSize
+    of the instrument (see account-info or market-data).
+  - OKX_HOLD_SECONDS (default 5) — how many seconds to hold the position open.
 
-ЗАПУСК:
+RUN:
     cp .env.example .env
-    # заполнить ключи + OKX_ALLOW_LIVE=1
+    # fill in the keys + OKX_ALLOW_LIVE=1
     ./scripts/run.sh ./examples/inventory-tracker
 
-СТОИМОСТЬ:
-    Сделка marketBUY + ClosePosition → платите спред × 2 + комиссию × 2.
-    Для BTC-USDT-SWAP с 1 контракт = 0.01 BTC при цене ~95k это ~1-2 USDT
-    суммарно. Точный расчёт зависит от твоего fee tier.
+COST:
+    marketBUY + ClosePosition → you pay spread × 2 + commission × 2.
+    For BTC-USDT-SWAP with 1 contract = 0.01 BTC at ~95k that is ~1-2 USDT
+    total. Exact calculation depends on your fee tier.
 */
 
 package main
@@ -54,7 +54,7 @@ import (
 )
 
 func main() {
-	// --- Конфиг и предохранители ---
+	// --- Config and guards ---
 	var apiKey string = os.Getenv("OKX_API_KEY")
 	var secret string = os.Getenv("OKX_SECRET_KEY")
 	var pass string = os.Getenv("OKX_PASSPHRASE")
@@ -86,7 +86,7 @@ func main() {
 		}
 	}
 
-	// --- Клиент ---
+	// --- Client ---
 	var cfg okx.Config = okx.DefaultConfig()
 	cfg.APIKey = apiKey
 	cfg.SecretKey = secret
@@ -100,13 +100,13 @@ func main() {
 	defer client.Close()
 	var swap *swappkg.Client = client.Swap().(*swappkg.Client)
 
-	// ctx живёт до Ctrl-C или ручной отмены в конце сценария.
+	// ctx lives until Ctrl-C or manual cancellation at the end of the scenario.
 	var ctx context.Context
 	var cancel context.CancelFunc
 	ctx, cancel = context.WithCancel(context.Background())
 	defer cancel()
 
-	// Обработчик SIGINT/SIGTERM, чтобы аккуратно закрыться при Ctrl-C.
+	// SIGINT/SIGTERM handler for graceful shutdown on Ctrl-C.
 	var sigCh chan os.Signal = make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
@@ -118,19 +118,19 @@ func main() {
 	fmt.Printf("=== Inventory tracker for %s, size=%s, hold=%ds ===\n\n",
 		instID, size.String(), holdSeconds)
 
-	// --- Предварительный snapshot позиции через REST (чтобы увидеть стартовое состояние) ---
+	// --- Initial position snapshot via REST (to see the starting state) ---
 	dumpInitialState(ctx, swap, instID)
 
-	// --- Подписки на private streams ---
+	// --- Subscribe to private streams ---
 	var inv inventoryState
 	subscribePositions(ctx, swap, instID, &inv)
 	subscribeOrders(ctx, swap, instID, &inv)
 
-	// Дадим WS-конекту прогреться и серверу прислать первые snapshots.
+	// Give the WS connection time to warm up and the server to send initial snapshots.
 	fmt.Println("warming up streams...")
 	time.Sleep(2 * time.Second)
 
-	// --- Открываем позицию маркетом ---
+	// --- Open position with market order ---
 	fmt.Println("\n>>> placing market BUY")
 	var openOrder types.OrderInfo
 	openOrder, err = swap.Trading().CreateOrder(ctx, types.CreateOrderRequest{
@@ -145,7 +145,7 @@ func main() {
 	}
 	fmt.Printf(">>> placed: ordId=%s clOrdId=%s\n", openOrder.OrderID, openOrder.ClientOrderID)
 
-	// Держим позицию N секунд — за это время WS обязан прислать обновления.
+	// Hold position for N seconds — during this time WS must deliver updates.
 	fmt.Printf(">>> holding for %d seconds, streaming inventory updates...\n\n", holdSeconds)
 	var hold *time.Timer = time.NewTimer(time.Duration(holdSeconds) * time.Second)
 	select {
@@ -155,7 +155,7 @@ func main() {
 		return
 	}
 
-	// --- Закрываем позицию ---
+	// --- Close position ---
 	fmt.Println("\n>>> closing position")
 	err = swap.Account().ClosePosition(ctx, instID)
 	if err != nil {
@@ -163,10 +163,10 @@ func main() {
 	}
 	fmt.Println(">>> close request accepted")
 
-	// Дадим стримам прислать финальное обнуление позиции.
+	// Give streams time to deliver the final position zero update.
 	time.Sleep(3 * time.Second)
 
-	// --- Сводка ---
+	// --- Summary ---
 	fmt.Println("\n=== Final state ===")
 	fmt.Printf("position updates received: %d\n", inv.posUpdates.Load())
 	fmt.Printf("order updates received:    %d\n", inv.ordUpdates.Load())
@@ -184,7 +184,7 @@ func main() {
 	}
 }
 
-// inventoryState — счётчики и последние известные значения, обновляются из WS.
+// inventoryState — counters and last known values, updated from WS.
 type inventoryState struct {
 	posUpdates atomic.Uint64
 	ordUpdates atomic.Uint64

@@ -1,15 +1,15 @@
 /*
-ФАЙЛ: internal/okxlog/logger.go
+FILE: internal/okxlog/logger.go
 
-ОПИСАНИЕ:
-Интерфейс Logger + типизированное Field. Вынесен в internal, чтобы любой
-пакет SDK (rest, ws, codec, swap) использовал его без import-cycle. Корневой
-пакет okx переэкспортирует тип/функции через alias.
+DESCRIPTION:
+Logger interface + typed Field. Placed in internal so that any SDK package
+(rest, ws, codec, swap) can use it without import cycles. The root okx package
+re-exports the type/functions via aliases.
 */
 
 package okxlog
 
-// FieldKind — дискриминатор Field.
+// FieldKind — Field discriminator.
 type FieldKind uint8
 
 const (
@@ -20,7 +20,7 @@ const (
 	FieldKindError
 )
 
-// Field — типизированное key-value поле лога. Без интерфейса — без boxing.
+// Field — typed key-value log field. No interface — no boxing.
 type Field struct {
 	Key  string
 	Kind FieldKind
@@ -31,7 +31,7 @@ type Field struct {
 	Err  error
 }
 
-// Str / Int / Float / Bool / Err — фабрики Field'ов.
+// Str / Int / Float / Bool / Err — Field factories.
 func Str(key, value string) Field {
 	return Field{Key: key, Kind: FieldKindString, Str: value}
 }
@@ -48,7 +48,7 @@ func Err(err error) Field {
 	return Field{Key: "error", Kind: FieldKindError, Err: err}
 }
 
-// Logger — минимальный контракт логирования SDK.
+// Logger — minimal SDK logging contract.
 type Logger interface {
 	Debug(msg string, fields ...Field)
 	Info(msg string, fields ...Field)
@@ -56,10 +56,10 @@ type Logger interface {
 	Error(msg string, fields ...Field)
 }
 
-// noop — реализация по умолчанию.
+// noop — default implementation.
 type noop struct{}
 
-// Noop возвращает singleton no-op логгер.
+// Noop returns the singleton no-op logger.
 func Noop() Logger { return noopSingleton }
 
 var noopSingleton Logger = noop{}

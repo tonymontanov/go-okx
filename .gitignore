@@ -1,11 +1,11 @@
-# --- Секреты ---
-# Файл с реальными API-ключами. Шаблон — .env.example.
+# --- Secrets ---
+# File with real API keys. Template — .env.example.
 .env
 .env.local
 *.pem
 *.key
 
-# --- Бинарники компилятора Go ---
+# --- Go compiler binaries ---
 /bin/
 /build/
 *.test
@@ -13,9 +13,9 @@
 coverage.out
 coverage.html
 
-# Случайно созданные бинарники в корне проекта.
-# Возникают, если запустить `go build ./examples/<name>` из корня без флага -o.
-# Имя файла совпадает с именем последнего сегмента пакета.
+# Accidentally produced binaries in the project root.
+# Occur when running `go build ./examples/<name>` from the root without the -o flag.
+# The filename matches the last segment of the package path.
 /account-info
 /inventory-monitor
 /inventory-tracker
@@ -24,7 +24,7 @@ coverage.html
 /public-streams
 /simple-trade
 
-# --- IDE / OS мусор ---
+# --- IDE / OS junk ---
 .vscode/
 .idea/
 .DS_Store

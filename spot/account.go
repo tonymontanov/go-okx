@@ -1,28 +1,28 @@
 /*
-ФАЙЛ: spot/account.go
+FILE: spot/account.go
 
-ОПИСАНИЕ:
-Доменный саб-клиент аккаунта/балансов для SPOT-профиля OKX.
+DESCRIPTION:
+Domain sub-client for SPOT profile account/balance operations.
 
-Реализованные методы:
+Implemented methods:
   - GetBalance      : GET /api/v5/account/balance[?ccy=...]
   - GetOpenOrders   : GET /api/v5/trade/orders-pending?instType=SPOT&instId=...
 
-ЧЕГО ЗДЕСЬ НЕТ И ПОЧЕМУ:
-  - GetPositions / GetSymbolPosition: на спот OKX позиций НЕ возвращает
-    через /account/positions. Состояние "что у меня есть" на cash-споте —
-    это просто Balance.Details. Поэтому в spot/account.go этих методов нет;
-    спотовый коннектор в торговом ядре строит types.PositionInfo на основе
-    free-balance базовой валюты (см. core/internal/connectors/okx/spot).
-  - SetLeverage / SetPositionMode: на cash-споте не применимы. Если в
-    будущем добавим spot margin (cross/isolated) — методы пойдут в отдельный
-    spot/margin/* подпакет, чтобы не загромождать API cash-only сценариям.
-  - ClosePosition: на cash-споте отсутствует понятие "позиция к закрытию".
+WHAT IS NOT HERE AND WHY:
+  - GetPositions / GetSymbolPosition: on spot OKX does NOT return positions
+    via /account/positions. The "what do I hold" state on cash spot is simply
+    Balance.Details. Therefore these methods are absent from spot/account.go;
+    the spot connector in the trading core builds types.PositionInfo from the
+    free-balance of the base currency (see core/internal/connectors/okx/spot).
+  - SetLeverage / SetPositionMode: not applicable to cash spot. If spot margin
+    (cross/isolated) is added in the future, the methods will go into a separate
+    spot/margin/* sub-package to keep the cash-only API uncluttered.
+  - ClosePosition: the concept of "a position to close" does not exist on cash spot.
 
-ENDPOINT БАЛАНСА ОБЩИЙ У SPOT И SWAP:
-OKX использует unified-account — баланс не разделён по instType. Поэтому
-парсинг точно такой же, как в swap/account.go, и тип Balance общий
-(см. spot/types/aliases.go → Balance = swaptypes.Balance).
+BALANCE ENDPOINT IS SHARED BETWEEN SPOT AND SWAP:
+OKX uses unified-account — the balance is not split by instType. Therefore
+parsing is identical to swap/account.go and the Balance type is shared
+(see spot/types/aliases.go → Balance = swaptypes.Balance).
 */
 
 package spot
@@ -38,7 +38,7 @@ import (
 	"github.com/tonymontanov/go-okx/v2/spot/types"
 )
 
-// AccountClient — саб-клиент аккаунта SPOT.
+// AccountClient — SPOT account sub-client.
 type AccountClient struct {
 	c *Client
 }
@@ -47,8 +47,8 @@ func newAccountClient(c *Client) *AccountClient {
 	return &AccountClient{c: c}
 }
 
-// rawBalanceDetail — сырой формат per-currency элемента из /account/balance.
-// Полный набор полей; см. spot/types/aliases.go (Balance = swaptypes.Balance).
+// rawBalanceDetail — raw format of a per-currency element from /account/balance.
+// Full set of fields; see spot/types/aliases.go (Balance = swaptypes.Balance).
 type rawBalanceDetail struct {
 	Ccy       string `json:"ccy"`
 	Eq        string `json:"eq"`
@@ -65,7 +65,7 @@ type rawBalanceDetail struct {
 	UTime     string `json:"uTime"`
 }
 
-// rawBalance — сырой формат top-level элемента из /account/balance.
+// rawBalance — raw format of the top-level element from /account/balance.
 type rawBalance struct {
 	TotalEq     string             `json:"totalEq"`
 	AdjEq       string             `json:"adjEq"`
@@ -80,9 +80,9 @@ type rawBalance struct {
 }
 
 /*
-GetBalance возвращает unified-account баланс. Если переданы валюты — фильтрует
-ответ OKX по ним (передаётся параметр ccy=BTC,USDT). Без аргументов вернутся
-все валюты, по которым у аккаунта есть какой-либо баланс/позиция.
+GetBalance returns the unified-account balance. If currencies are provided, the
+OKX response is filtered by them (ccy=BTC,USDT query parameter). Without arguments,
+all currencies with any balance/position on the account are returned.
 
 ENDPOINT: GET /api/v5/account/balance[?ccy=BTC,USDT]
 */
@@ -152,8 +152,8 @@ func convertBalance(r rawBalance) types.Balance {
 	return out
 }
 
-// rawOpenOrderEntry — сырой ответ /trade/orders-pending. Один формат у OKX
-// для SPOT/SWAP, parse одинаковый.
+// rawOpenOrderEntry — raw response from /trade/orders-pending. OKX uses a
+// single format for SPOT/SWAP; parsing is identical.
 type rawOpenOrderEntry struct {
 	InstID    string `json:"instId"`
 	OrdID     string `json:"ordId"`
@@ -170,8 +170,8 @@ type rawOpenOrderEntry struct {
 }
 
 /*
-GetOpenOrders возвращает все активные ордера по SPOT-инструменту.
-OKX возвращает до 100 ордеров за вызов; пагинацию не делаем (см. SWAP-комментарий).
+GetOpenOrders returns all active orders for a SPOT instrument.
+OKX returns up to 100 orders per call; pagination is not implemented (see SWAP comment).
 */
 func (a *AccountClient) GetOpenOrders(ctx context.Context, instID string) ([]types.OrderInfo, error) {
 	if instID == "" {

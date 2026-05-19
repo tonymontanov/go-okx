@@ -1,18 +1,18 @@
 /*
-ФАЙЛ: spot/trading_ws_test.go
+FILE: spot/trading_ws_test.go
 
-ОПИСАНИЕ:
-Contract-тесты WSTradingClient для SPOT. Поднимают локальный mock WS-
-сервер (gorilla upgrade), проверяют:
+DESCRIPTION:
+Contract tests for WSTradingClient for SPOT. Spins up a local mock WS server
+(gorilla upgrade) and verifies:
 
   - happy-path CreateOrder/ModifyOrder/CancelOrder;
-  - per-item reject через sCode != "0" → типизированная *okx.Error;
-  - batch CreateBatchOrders с частичным reject (агрегация ошибок);
-  - корректный correlation id (id в request == id в reply).
+  - per-item reject via sCode != "0" → typed *okx.Error;
+  - batch CreateBatchOrders with partial reject (error aggregation);
+  - correct correlation id (id in request == id in reply).
 
-Mock-сервер не валидирует sign — это не задача этого слоя (покрыто
-internal/ws). Любой login принимается; на op-команды отдаются заранее
-заготовленные ответы по типу op-имени.
+The mock server does not validate signatures — that is not this layer's
+responsibility (covered by internal/ws). Any login is accepted; op-commands
+receive pre-baked responses keyed by op name.
 */
 
 package spot
@@ -32,22 +32,22 @@ import (
 	"github.com/tonymontanov/go-okx/v2/spot/types"
 )
 
-// wsOpRequest — упрощённая копия protocolа OKX WS (id+op+args) для парсинга
-// в mock-сервере. Соответствует internal/ws.opRequestMessage.
+// wsOpRequest — simplified copy of the OKX WS protocol (id+op+args) for
+// parsing in the mock server. Matches internal/ws.opRequestMessage.
 type wsOpRequest struct {
 	ID   string `json:"id"`
 	Op   string `json:"op"`
 	Args []any  `json:"args"`
 }
 
-// mockWSScript — поведение mock WS-сервера на op-команды.
+// mockWSScript — mock WS server behaviour for op-commands.
 type mockWSScript struct {
-	// onOp принимает (id, op, args-as-raw-json) и возвращает body reply
-	// (без поля id — оно подставится автоматически).
+	// onOp takes (id, op, args-as-raw-json) and returns the reply body
+	// (without the id field — it will be substituted automatically).
 	onOp func(id, op, rawArgs string) string
 }
 
-// startMockWS поднимает локальный WS-сервер. Возвращает ws://-URL.
+// startMockWS starts a local WS server. Returns the ws:// URL.
 func startMockWS(t *testing.T, script mockWSScript) (string, *httptest.Server) {
 	t.Helper()
 	var upgrader websocket.Upgrader = websocket.Upgrader{
@@ -101,14 +101,14 @@ func startMockWS(t *testing.T, script mockWSScript) (string, *httptest.Server) {
 	return u, srv
 }
 
-// newSpotWithMockWS создаёт spot.Client, чей private WS указывает на
-// mock-сервер. REST в этих тестах не используется.
+// newSpotWithMockWS creates a spot.Client whose private WS points to the
+// mock server. REST is not used in these tests.
 func newSpotWithMockWS(t *testing.T, wsURL string) *Client {
 	t.Helper()
 	var cfg okx.Config = okx.DefaultConfig()
 	cfg.APIKey, cfg.SecretKey, cfg.Passphrase = "k", "s", "p"
 	cfg.WS.PrivateURL = wsURL
-	cfg.WS.PublicURL = wsURL // не используется в этих тестах, но не должно быть пустым
+	cfg.WS.PublicURL = wsURL // not used in these tests, but must not be empty
 	cfg.WS.HandshakeTimeout = 2 * time.Second
 	cfg.WS.ReadTimeout = 2 * time.Second
 	cfg.WS.WriteTimeout = 1 * time.Second
@@ -294,16 +294,16 @@ func TestWS_CreateBatchOrders_PartialReject(t *testing.T) {
 }
 
 func TestWS_CorrelationID(t *testing.T) {
-	// Сервер задерживает ответ на 50мс — за это время мы успеваем
-	// отправить второй запрос. Проверяем, что каждый caller получает
-	// свой reply (id matched).
+	// The server delays the response by 50ms — during this time we send
+	// the second request. Verifies that each caller receives its own reply
+	// (id matched).
 	var got1 atomic.Int64
 	var got2 atomic.Int64
 	var url string
 	var srv *httptest.Server
 	url, srv = startMockWS(t, mockWSScript{
 		onOp: func(id, op, args string) string {
-			// echo id в clOrdId
+			// echo id as clOrdId
 			time.Sleep(20 * time.Millisecond)
 			return `{"id":"` + id + `","op":"` + op + `","code":"0","msg":"","data":[{"ordId":"o","clOrdId":"` + id + `","sCode":"0"}]}`
 		},
@@ -379,7 +379,7 @@ func TestWS_CancelAllAfter_HappyPath(t *testing.T) {
 	}
 }
 
-// asOkxError — local helper для безопасного type-assert через errors.As.
+// asOkxError — local helper for safe type-assert via errors.As.
 func asOkxError(err error, target **okx.Error) bool {
 	var oerr *okx.Error
 	for cur := err; cur != nil; {

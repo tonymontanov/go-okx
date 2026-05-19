@@ -1,16 +1,16 @@
 /*
-ФАЙЛ: internal/rest/client_test.go
+FILE: internal/rest/client_test.go
 
-ОПИСАНИЕ:
-Тесты низкоуровневого REST-клиента, ориентированные на инфраструктурные
-аспекты (а не на доменную логику OKX — она покрыта в swap/contract_test.go).
+DESCRIPTION:
+Low-level REST client tests focused on infrastructure aspects (not OKX domain
+logic — that is covered in swap/contract_test.go).
 
-ПОКРЫТИЕ:
-  - TestDo_SetsDemoHeader: при cfg.Demo=true каждый запрос несёт
-    заголовок "x-simulated-trading: 1".
-  - TestDo_NoDemoHeaderByDefault: без Demo заголовок отсутствует.
-  - TestDo_PassesThroughBulkCodes: top-level "code":"1"/"2" не считаются
-    fatal — caller получает data, чтобы разобрать sCode каждой записи.
+COVERAGE:
+  - TestDo_SetsDemoHeader: when cfg.Demo=true every request carries the
+    "x-simulated-trading: 1" header.
+  - TestDo_NoDemoHeaderByDefault: without Demo the header is absent.
+  - TestDo_PassesThroughBulkCodes: top-level "code":"1"/"2" are not treated as
+    fatal — the caller receives data to parse per-entry sCode.
 */
 
 package rest

@@ -1,13 +1,12 @@
 /*
-ФАЙЛ: spot/event_observer_test.go
+FILE: spot/event_observer_test.go
 
-ОПИСАНИЕ:
-End-to-end тесты на RateLimitEventObserver для SPOT-домена. Проверяем что
-доменные методы корректно проставляют RequestMeta (OrderCount/Symbols/Category)
-для каждого endpoint'а — без этого внешний rate-limiter не сможет моделировать
-лимиты OKX точно.
+DESCRIPTION:
+End-to-end tests for RateLimitEventObserver in the SPOT domain. Verifies that
+domain methods correctly set RequestMeta (OrderCount/Symbols/Category) for each
+endpoint — without this an external rate-limiter cannot accurately model OKX limits.
 
-Покрытие методов:
+Method coverage:
   - Trading.CreateOrder       → Place, 1 symbol, OrderCount=1
   - Trading.CreateBatchOrders → Place, multi symbols, OrderCount=len(orders)
   - Trading.ModifyOrder       → Amend, 1 symbol
@@ -213,7 +212,7 @@ func TestEventObserver_AccountAndMarketCategories(t *testing.T) {
 		"/api/v5/public/instruments":   instrumentsFixture,
 	})
 
-	// GetBalance: Query, без symbols
+	// GetBalance: Query, no symbols
 	var _, err = spotOf(client).Account().GetBalance(context.Background())
 	if err != nil {
 		t.Fatalf("GetBalance: %v", err)

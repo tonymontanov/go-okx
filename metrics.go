@@ -1,38 +1,39 @@
 /*
-ФАЙЛ: metrics.go
+FILE: metrics.go
 
-ОПИСАНИЕ:
-Публичный реэкспорт интерфейса метрик. Сам интерфейс живёт в internal/okxmet,
-чтобы любой internal-пакет SDK (ws, rest) мог использовать его без
-import-cycle. Корневой пакет переэкспортирует тип/функции через alias.
+DESCRIPTION:
+Public re-export of the metrics interface. The interface itself lives in
+internal/okxmet so that any internal SDK package (ws, rest) can use it
+without an import cycle. The root package re-exports the type/functions
+via alias.
 
-ПОДКЛЮЧЕНИЕ PROMETHEUS:
-В коде пользователя адаптер выглядит примерно так:
+PROMETHEUS INTEGRATION:
+A typical adapter in user code looks like this:
 
 	type promFactory struct{ namespace string }
 	func (p promFactory) Counter(name string, labels ...string) okx.Counter {
 		var c prometheus.Counter = prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: p.namespace, Name: name,
 		})
-		// labels можно прокинуть в CounterVec.With(...).
+		// labels can be forwarded to CounterVec.With(...).
 		return c
 	}
 
 	cfg.Metrics = promFactory{namespace: "myapp"}
 
-Поскольку prometheus.Counter уже имеет методы Inc/Add — он реализует
-интерфейс okx.Counter без обёртки.
+Since prometheus.Counter already has Inc/Add methods it implements
+okx.Counter without any wrapper.
 */
 
 package okx
 
 import "github.com/tonymontanov/go-okx/v2/internal/okxmet"
 
-// Counter — счётчик метрик. Alias.
+// Counter — metrics counter. Alias.
 type Counter = okxmet.Counter
 
-// CounterFactory — фабрика счётчиков. Alias.
+// CounterFactory — counter factory. Alias.
 type CounterFactory = okxmet.CounterFactory
 
-// NoopMetrics возвращает no-op фабрику метрик. Используется как default.
+// NoopMetrics returns a no-op counter factory. Used as the default.
 func NoopMetrics() CounterFactory { return okxmet.Noop() }

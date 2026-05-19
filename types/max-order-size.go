@@ -1,38 +1,37 @@
 /*
-ФАЙЛ: types/max-order-size.go
+FILE: types/max-order-size.go
 
-ОПИСАНИЕ:
-MaxOrderSize — максимально допустимый размер ордера для инструмента в
-указанном режиме маржи. Учитывает текущий баланс, плечо и существующие
-открытые позиции/ордера.
+DESCRIPTION:
+MaxOrderSize — maximum allowable order size for an instrument in the
+specified margin mode. Takes into account the current balance, leverage,
+and existing open positions/orders.
 
-Маппится из:
-  - GET /api/v5/account/max-size      — макс размер БЕЗ учёта pending ордеров
-  - GET /api/v5/account/max-avail-size — макс размер С учётом pending ордеров
+Mapped from:
+  - GET /api/v5/account/max-size       — max size WITHOUT pending orders
+  - GET /api/v5/account/max-avail-size — max size WITH pending orders
 
-HFT-применение:
-  - pre-trade sizing: запрашиваем перед серией ордеров, чтобы не уйти в
-    51008 (insufficient balance) или 51020 (max position size exceeded);
-  - rebalance: считаем разницу между «макс long» и «макс short», чтобы
-    понять текущее использование маржи.
+HFT usage:
+  - pre-trade sizing: query before a series of orders to avoid
+    51008 (insufficient balance) or 51020 (max position size exceeded);
+  - rebalance: compute the difference between "max long" and "max short"
+    to understand current margin utilization.
 */
 
 package types
 
 import "github.com/shopspring/decimal"
 
-// MaxOrderSize — максимальный размер ордера.
+// MaxOrderSize — maximum order size.
 type MaxOrderSize struct {
-	// InstID — инструмент.
+	// InstID — instrument.
 	InstID string
-	// Ccy — валюта (для MARGIN/SPOT) (ccy).
+	// Ccy — currency (for MARGIN/SPOT) (ccy).
 	Ccy string
-	// MaxBuy — максимальный размер buy-ордера в базовой валюте/контрактах
-	// (maxBuy).
+	// MaxBuy — maximum buy order size in base currency/contracts (maxBuy).
 	MaxBuy decimal.Decimal
-	// MaxSell — максимальный размер sell-ордера (maxSell).
+	// MaxSell — maximum sell order size (maxSell).
 	MaxSell decimal.Decimal
 }
 
-// MaxOrderSizes — слайс.
+// MaxOrderSizes — slice.
 type MaxOrderSizes []MaxOrderSize

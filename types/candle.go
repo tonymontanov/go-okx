@@ -1,29 +1,30 @@
 /*
-ФАЙЛ: types/candle.go
+FILE: types/candle.go
 
-ОПИСАНИЕ:
-Структуры исторической свечи. Маппятся из массива чисел/строк ответа
-`GET /api/v5/market/candles` и `history-candles`.
+DESCRIPTION:
+Historical candle structs. Mapped from the array of numbers/strings in the
+`GET /api/v5/market/candles` and `history-candles` responses.
 
-Формат ответа OKX (массив строк по позициям):
+OKX response format (positional string array):
 
 	[ ts, o, h, l, c, vol, volCcy, volCcyQuote, confirm ]
 
-Где confirm — флаг закрытия свечи ("0" — текущая, "1" — закрытая).
+Where confirm is the candle close flag ("0" — current, "1" — closed).
 
-ОТЛИЧИЯ В СЕМАНТИКЕ Volume МЕЖДУ ПРОФИЛЯМИ — задача адаптера, не структуры:
-  - spot:  Volume в base currency напрямую;
-  - swap:  Volume в контрактах (умножать на ctVal для приведения в base).
+DIFFERENCES IN Volume SEMANTICS BETWEEN PROFILES — the adapter's responsibility,
+not the struct's:
+  - spot:  Volume in base currency directly;
+  - swap:  Volume in contracts (multiply by ctVal to convert to base).
 
-Структура хранит обе цифры (Volume и VolumeQuote) и оставляет смысл единицы
-на совесть вызывающего слоя.
+The struct stores both figures (Volume and VolumeQuote) and leaves the unit
+interpretation to the calling layer.
 */
 
 package types
 
 import "github.com/shopspring/decimal"
 
-// Candle — одна свеча.
+// Candle — one candle.
 type Candle struct {
 	OpenTimeMs  int64
 	Open        decimal.Decimal
@@ -35,5 +36,5 @@ type Candle struct {
 	Closed      bool
 }
 
-// Candles — слайс свечей.
+// Candles — slice of candles.
 type Candles []Candle

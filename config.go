@@ -1,85 +1,83 @@
 /*
-ФАЙЛ: config.go
+FILE: config.go
 
-ОПИСАНИЕ:
-Файл config.go определяет конфигурационные структуры SDK (см. ТЗ §5.5).
-Здесь же — типичные production / demo endpoints OKX и значения по умолчанию.
+DESCRIPTION:
+config.go defines the SDK configuration structs (see spec §5.5).
+Also contains the typical production / demo OKX endpoints and default values.
 
-ОСНОВНЫЕ ФУНКЦИИ:
-  - DefaultConfig(): возвращает Config c production-endpoints и значениями
-    по умолчанию для таймаутов/reconnect/orderbook.
-  - (Config).withDefaults(): добивает пустые поля Config дефолтами. Внутри
-    SDK конфиг ВСЕГДА сначала пропускается через withDefaults().
+MAIN FUNCTIONS:
+  - DefaultConfig(): returns Config with production endpoints and default values
+    for timeouts/reconnect/orderbook.
+  - (Config).withDefaults(): fills empty Config fields with defaults. Inside
+    the SDK the config is ALWAYS passed through withDefaults() first.
 
-ОСНОВНЫЕ СУЩНОСТИ:
-  - Config:                    публичная конфигурация Client'а.
-  - RestConfig / WsConfig:     транспортные параметры (таймауты, reconnect, ping).
-  - OrderbookConfig:           параметры orderbook engine (depth, resync policy).
+MAIN TYPES:
+  - Config:                    public Client configuration.
+  - RestConfig / WsConfig:     transport parameters (timeouts, reconnect, ping).
+  - OrderbookConfig:           orderbook engine parameters (depth, resync policy).
 
-ЭНДПОИНТЫ:
-По дефолту используются production-хосты OKX:
+ENDPOINTS:
+Production OKX hosts are used by default:
   - REST: https://www.okx.com
-  - WS public:  wss://ws.okx.com:8443/ws/v5/public
-  - WS private: wss://ws.okx.com:8443/ws/v5/private
+  - WS public:   wss://ws.okx.com:8443/ws/v5/public
+  - WS private:  wss://ws.okx.com:8443/ws/v5/private
   - WS business: wss://ws.okx.com:8443/ws/v5/business
 
-Демо-режим (`x-simulated-trading: 1`) — вне Scope v1 (см. ответы на ТЗ).
-
-ЗАВИСИМОСТИ:
-Стандартные библиотеки:
-  - time: таймауты и интервалы reconnect/keepalive.
+DEPENDENCIES:
+Standard library:
+  - time: timeouts and reconnect/keepalive intervals.
 */
 
 package okx
 
 import "time"
 
-// Транспортные URL'ы OKX. Объявлены как vars, а не const, чтобы тесты могли
-// переопределить (например, на mock-сервер).
+// OKX transport URLs. Declared as vars rather than const so tests can override
+// them (e.g. to point at a mock server).
 var (
-	// DefaultRestBaseURL — production REST endpoint OKX v5. Используется и в
-	// production, и в demo (для demo нужен лишь заголовок x-simulated-trading: 1).
+	// DefaultRestBaseURL — production REST endpoint OKX v5. Used for both
+	// production and demo (demo only requires the x-simulated-trading: 1 header).
 	DefaultRestBaseURL string = "https://www.okx.com"
-	// DefaultWsPublicURL — production WS endpoint для публичных каналов
+	// DefaultWsPublicURL — production WS endpoint for public channels
 	// (books/tickers/marks/index).
 	DefaultWsPublicURL string = "wss://ws.okx.com:8443/ws/v5/public"
-	// DefaultWsPrivateURL — production WS endpoint для приватных каналов
+	// DefaultWsPrivateURL — production WS endpoint for private channels
 	// (orders/positions/account).
 	DefaultWsPrivateURL string = "wss://ws.okx.com:8443/ws/v5/private"
-	// DefaultWsBusinessURL — production WS endpoint для business-каналов
-	// (algo-orders, deposit-info, candles). Зарезервирован на будущее.
+	// DefaultWsBusinessURL — production WS endpoint for business channels
+	// (algo-orders, deposit-info, candles). Reserved for future use.
 	DefaultWsBusinessURL string = "wss://ws.okx.com:8443/ws/v5/business"
 
-	// DemoWsPublicURL — demo (paper-trading) WS endpoint для публичных каналов.
-	// OKX выделяет под demo отдельный хост wspap.okx.com.
+	// DemoWsPublicURL — demo (paper-trading) WS endpoint for public channels.
+	// OKX uses a dedicated host wspap.okx.com for demo.
 	DemoWsPublicURL string = "wss://wspap.okx.com:8443/ws/v5/public"
-	// DemoWsPrivateURL — demo WS endpoint для приватных каналов.
+	// DemoWsPrivateURL — demo WS endpoint for private channels.
 	DemoWsPrivateURL string = "wss://wspap.okx.com:8443/ws/v5/private"
-	// DemoWsBusinessURL — demo WS endpoint для business-каналов.
+	// DemoWsBusinessURL — demo WS endpoint for business channels.
 	DemoWsBusinessURL string = "wss://wspap.okx.com:8443/ws/v5/business"
 )
 
-// Config — публичная конфигурация SDK. Передаётся в NewClient.
+// Config — public SDK configuration. Passed to NewClient.
 type Config struct {
-	// APIKey — публичный ключ OKX (OK-ACCESS-KEY).
+	// APIKey — OKX public key (OK-ACCESS-KEY).
 	APIKey string
-	// SecretKey — секретный ключ OKX, используемый для HMAC-подписи (OK-ACCESS-SIGN).
+	// SecretKey — OKX secret key used for HMAC signing (OK-ACCESS-SIGN).
 	SecretKey string
-	// Passphrase — обязательный для OKX passphrase (OK-ACCESS-PASSPHRASE).
+	// Passphrase — OKX mandatory passphrase (OK-ACCESS-PASSPHRASE).
 	Passphrase string
 
-	// REST — настройки REST-транспорта. Если пуст — берётся DefaultConfig().REST.
+	// REST — REST transport settings. If empty, DefaultConfig().REST is used.
 	REST RestConfig
-	// WS — настройки WebSocket-транспорта. Если пуст — берётся DefaultConfig().WS.
+	// WS — WebSocket transport settings. If empty, DefaultConfig().WS is used.
 	WS WsConfig
-	// Orderbook — настройки orderbook-движка. Если пуст — DefaultConfig().Orderbook.
+	// Orderbook — orderbook engine settings. If empty, DefaultConfig().Orderbook is used.
 	Orderbook OrderbookConfig
 
-	// Logger — опциональный логгер. Если nil — используется NoopLogger().
+	// Logger — optional logger. If nil, NoopLogger() is used.
 	Logger Logger
 
-	// Metrics — опциональная фабрика счётчиков. Если nil — используется
-	// NoopMetrics(). SDK создаёт через неё следующие счётчики (см. docs):
+	// Metrics — optional counter factory. If nil, NoopMetrics() is used.
+	// The SDK creates the following counters through it (see docs):
 	//   okx_ws_messages_received_total
 	//   okx_ws_messages_dropped_total
 	//   okx_ws_reconnects_total
@@ -87,133 +85,134 @@ type Config struct {
 	//   okx_ws_ping_failed_total
 	Metrics CounterFactory
 
-	// UserAgent — значение User-Agent для REST-запросов. Если пусто — "go-okx/v2".
+	// UserAgent — User-Agent value for REST requests. Default: "go-okx/v2".
 	UserAgent string
 
-	// RateLimitObserver — опциональный hook, который SDK вызывает СИНХРОННО
-	// после каждого REST-ответа (успешного или с ошибкой OKX) с заголовками
-	// rate-limit'а, которые OKX вернул для конкретного endpoint'а:
+	// RateLimitObserver — optional hook called SYNCHRONOUSLY by the SDK after
+	// every REST response (successful or OKX-level error) with the rate-limit
+	// headers returned by OKX for the specific endpoint:
 	//   ratelimit-limit / ratelimit-remaining / ratelimit-reset
 	//   x-ratelimit-limit / x-ratelimit-remaining / x-ratelimit-reset
 	//
-	// Аргументы:
-	//   - endpoint: путь запроса (например, "/api/v5/trade/batch-orders").
-	//     OKX-лимиты per-endpoint, поэтому подписчику нужна именно эта гранулярность.
-	//   - headers:  фактически отданные сервером заголовки. Может быть пустой
-	//     map, если конкретный endpoint не возвращает rate-limit info, но всегда
+	// Arguments:
+	//   - endpoint: request path (e.g. "/api/v5/trade/batch-orders").
+	//     OKX limits are per-endpoint, so this granularity is required.
+	//   - headers:  actual headers returned by the server. May be an empty
+	//     map if the endpoint does not return rate-limit info, but is always
 	//     non-nil.
 	//
-	// Observer НЕ вызывается на офлайн-ошибках (timeout / network reset, до
-	// прихода HTTP-ответа), потому что таких ситуаций нет новой rate-limit
-	// информации. Вызывается на любом полученном ответе, включая 4xx/5xx.
+	// The observer is NOT called on offline errors (timeout / network reset,
+	// before an HTTP response arrives) because there is no new rate-limit
+	// information in those cases. It is called on any received response,
+	// including 4xx/5xx.
 	//
-	// Контракт скорости: observer вызывается в горутине, выполнившей REST-вызов,
-	// и блокирует возврат из Client.Do до его завершения. Реализация должна быть
-	// O(1) — типично неблокирующая отправка в буферизованный канал. Любая
-	// блокировка/паника тормозит весь REST-pipeline вызывающего.
+	// Speed contract: the observer is called in the goroutine that executed
+	// the REST call and blocks the return from Client.Do until it completes.
+	// Implementations must be O(1) — typically a non-blocking send to a
+	// buffered channel. Any blocking or panic stalls the caller's REST pipeline.
 	//
-	// Если nil — no-op, zero overhead. Эта совместимость v2.x гарантируется.
+	// If nil — no-op, zero overhead. This v2.x compatibility is guaranteed.
 	//
-	// Deprecated v2.2.0: предпочитайте RateLimitEventObserver — он несёт
-	// OrderCount / Symbols / Category, без которых корректно моделировать
-	// OKX rate limits НЕВОЗМОЖНО (см. RateLimitEvent doc). Старый observer
-	// оставлен только ради обратной совместимости с v2.1.0; в v3 будет удалён.
+	// Deprecated v2.2.0: prefer RateLimitEventObserver — it carries
+	// OrderCount / Symbols / Category, without which correct modelling of
+	// OKX rate limits is IMPOSSIBLE (see RateLimitEvent doc). The old observer
+	// is kept only for backwards compatibility with v2.1.0; it will be removed in v3.
 	RateLimitObserver func(endpoint string, headers map[string]string)
 
-	// RateLimitEventObserver — расширенный observer, добавлен в v2.2.0.
-	// Получает структурированный RateLimitEvent на каждый REST-ответ, включая
-	// поля, без которых внешний rate-limiter НЕ может моделировать OKX лимиты
-	// точно:
-	//   - OrderCount: 1 для single endpoints, len(orders) для batch.
-	//     OKX лимитирует batch как "300 ORDERS per 2s", не "300 REQUESTS".
-	//   - Symbols:   список InstID, к которым относится запрос. OKX trading
-	//     лимиты per (UID + InstId), поэтому подписчик должен видеть какие
-	//     именно символы потрачены.
-	//   - Category:  Place/Amend/Cancel/Query/Market — нужно для отдельной
-	//     sub-account-level плоскости (1000 new+amend orders / 2s, error 50061).
+	// RateLimitEventObserver — extended observer added in v2.2.0.
+	// Receives a structured RateLimitEvent on every REST response, including
+	// fields without which an external rate-limiter CANNOT accurately model
+	// OKX limits:
+	//   - OrderCount: 1 for single endpoints, len(orders) for batch.
+	//     OKX limits batch as "300 ORDERS per 2s", not "300 REQUESTS".
+	//   - Symbols:   list of InstIDs the request applies to. OKX trading
+	//     limits are per (UID + InstId), so the subscriber must see which
+	//     symbols were consumed.
+	//   - Category:  Place/Amend/Cancel/Query/Market — required for the
+	//     sub-account-level plane (1000 new+amend orders / 2s, error 50061).
 	//
-	// Контракт скорости и nil-семантика идентичны старому RateLimitObserver
-	// (см. выше). Если оба observer'а заданы — оба вызываются последовательно
-	// (старый сначала, новый вторым). Это позволяет постепенно мигрировать
-	// существующих подписчиков, не теряя callback'ов.
+	// Speed contract and nil semantics are identical to RateLimitObserver
+	// (see above). If both observers are set, both are called sequentially
+	// (legacy first, event second). This allows gradual migration of existing
+	// subscribers without losing callbacks.
 	//
-	// Если этот hook nil — no-op, zero overhead.
+	// If nil — no-op, zero overhead.
 	RateLimitEventObserver func(RateLimitEvent)
 
-	// Demo — переводит клиент в режим OKX Demo Trading (paper-trading).
-	// Эффект:
-	//   - REST: ко всем запросам добавляется заголовок "x-simulated-trading: 1".
-	//     URL остаётся production (DefaultRestBaseURL), потому что demo и prod
-	//     отвечают по одному и тому же хосту — отличает их только заголовок.
-	//   - WS:   URL'ы public/private/business АВТОМАТИЧЕСКИ заменяются на
-	//     wspap.okx.com, если пользователь не задал их явно через WS.PublicURL
-	//     и т. п. Если WS.PublicURL уже задан (например, на mock-сервер) —
-	//     SDK его не трогает.
-	//   - Ключи нужны отдельные: на OKX demo и prod ключи НЕ совместимы;
-	//     создайте demo-ключи в Profile → Demo Trading → API.
+	// Demo — switches the client to OKX Demo Trading mode (paper trading).
+	// Effect:
+	//   - REST: the header "x-simulated-trading: 1" is added to every request.
+	//     The URL stays at production (DefaultRestBaseURL), because demo and prod
+	//     share the same host — only the header distinguishes them.
+	//   - WS:   public/private/business URLs are AUTOMATICALLY replaced with
+	//     wspap.okx.com, unless the user set them explicitly via WS.PublicURL
+	//     etc. If WS.PublicURL is already set (e.g. to a mock server), the SDK
+	//     leaves it unchanged.
+	//   - Separate keys are required: OKX demo and prod keys are NOT compatible;
+	//     create demo keys at Profile → Demo Trading → API.
 	Demo bool
 }
 
-// RestConfig — настройки HTTP-транспорта.
+// RestConfig — HTTP transport settings.
 type RestConfig struct {
-	// BaseURL — базовый URL REST API OKX. По умолчанию DefaultRestBaseURL.
+	// BaseURL — base URL for the OKX REST API. Default: DefaultRestBaseURL.
 	BaseURL string
-	// RequestTimeout — таймаут одного REST-запроса. По умолчанию 10s.
-	// Для критичных «hot» вызовов (place/cancel) можно передавать ctx с
-	// собственным дедлайном — он перекрывает RequestTimeout.
+	// RequestTimeout — timeout for a single REST request. Default: 10s.
+	// For latency-critical calls (place/cancel) pass a ctx with its own
+	// deadline — it overrides RequestTimeout.
 	RequestTimeout time.Duration
-	// MaxIdleConns — размер пула idle-соединений http.Transport. По умолчанию 100.
+	// MaxIdleConns — idle connection pool size for http.Transport. Default: 100.
 	MaxIdleConns int
-	// MaxIdleConnsPerHost — pool size per host. По умолчанию 100.
+	// MaxIdleConnsPerHost — pool size per host. Default: 100.
 	MaxIdleConnsPerHost int
-	// IdleConnTimeout — keep-alive idle timeout. По умолчанию 90s.
+	// IdleConnTimeout — keep-alive idle timeout. Default: 90s.
 	IdleConnTimeout time.Duration
 }
 
-// WsConfig — настройки WebSocket-транспорта.
+// WsConfig — WebSocket transport settings.
 type WsConfig struct {
-	// PublicURL — URL public WS (orderbook/tickers/...). Default DefaultWsPublicURL.
+	// PublicURL — public WS URL (orderbook/tickers/...). Default: DefaultWsPublicURL.
 	PublicURL string
-	// PrivateURL — URL private WS (orders/positions). Default DefaultWsPrivateURL.
+	// PrivateURL — private WS URL (orders/positions). Default: DefaultWsPrivateURL.
 	PrivateURL string
-	// BusinessURL — URL business WS. Default DefaultWsBusinessURL.
+	// BusinessURL — business WS URL. Default: DefaultWsBusinessURL.
 	BusinessURL string
-	// HandshakeTimeout — таймаут установки соединения. По умолчанию 10s.
+	// HandshakeTimeout — connection handshake timeout. Default: 10s.
 	HandshakeTimeout time.Duration
-	// ReadTimeout — таймаут чтения одного фрейма. По умолчанию 35s (OKX шлёт ping раз в 30s).
+	// ReadTimeout — read timeout for a single frame. Default: 35s (OKX sends ping every 30s).
 	ReadTimeout time.Duration
-	// WriteTimeout — таймаут записи одного фрейма. По умолчанию 5s.
+	// WriteTimeout — write timeout for a single frame. Default: 5s.
 	WriteTimeout time.Duration
-	// PingInterval — интервал клиентского ping (OKX: "ping" текстовый фрейм,
-	// сервер отвечает "pong"). По умолчанию 20s (требование OKX <30s).
+	// PingInterval — client-side ping interval (OKX: text "ping" frame,
+	// server replies "pong"). Default: 20s (OKX requirement <30s).
 	PingInterval time.Duration
-	// ReconnectInitialBackoff — стартовая задержка между попытками реконнекта. По умолчанию 200ms.
+	// ReconnectInitialBackoff — initial delay between reconnect attempts. Default: 200ms.
 	ReconnectInitialBackoff time.Duration
-	// ReconnectMaxBackoff — верхняя граница backoff'а. По умолчанию 10s.
+	// ReconnectMaxBackoff — upper bound of backoff. Default: 10s.
 	ReconnectMaxBackoff time.Duration
-	// ReconnectJitter — относительный jitter [0..1] добавляемый к backoff'у. По умолчанию 0.2.
+	// ReconnectJitter — relative jitter [0..1] added to backoff. Default: 0.2.
 	ReconnectJitter float64
-	// ReadBufferSize — размер read-буфера gorilla/websocket. По умолчанию 64KB.
+	// ReadBufferSize — gorilla/websocket read buffer size. Default: 64KB.
 	ReadBufferSize int
-	// WriteBufferSize — размер write-буфера gorilla/websocket. По умолчанию 16KB.
+	// WriteBufferSize — gorilla/websocket write buffer size. Default: 16KB.
 	WriteBufferSize int
 }
 
-// OrderbookConfig — настройки orderbook-движка.
+// OrderbookConfig — orderbook engine settings.
 type OrderbookConfig struct {
-	// MaxDepth — глубина локального стакана (число уровней с каждой стороны).
-	// По умолчанию 400 (соответствует канала "books" OKX).
+	// MaxDepth — depth of the local order book (number of levels per side).
+	// Default: 400 (matches the OKX "books" channel).
 	MaxDepth int
-	// ChecksumLevels — число уровней, по которым OKX считает CRC32. Всегда 25
-	// согласно спецификации. Параметризовано на случай изменения протокола.
+	// ChecksumLevels — number of levels OKX uses for CRC32. Always 25 per
+	// specification. Parameterized in case the protocol changes.
 	ChecksumLevels int
-	// ChecksumMismatchToResync — сколько подряд несоответствий CRC32 допустимо
-	// прежде чем форсировать resync. По умолчанию 1 (любой mismatch — resync).
+	// ChecksumMismatchToResync — how many consecutive CRC32 mismatches are
+	// allowed before forcing a resync. Default: 1 (any mismatch triggers resync).
 	ChecksumMismatchToResync int
 }
 
-// DefaultConfig возвращает конфигурацию со всеми разумными значениями по
-// умолчанию (production-endpoints + production-таймауты).
+// DefaultConfig returns a Config with all sensible defaults
+// (production endpoints + production timeouts).
 func DefaultConfig() Config {
 	return Config{
 		REST: RestConfig{
@@ -248,9 +247,9 @@ func DefaultConfig() Config {
 	}
 }
 
-// withDefaults возвращает Config, где все пустые поля заполнены значениями
-// из DefaultConfig(). Используется внутри NewClient — пользовательский Config
-// никогда не мутируется.
+// withDefaults returns a Config where all empty fields are filled with values
+// from DefaultConfig(). Used inside NewClient — the user-supplied Config is
+// never mutated.
 func (c Config) withDefaults() Config {
 	var def Config = DefaultConfig()
 
@@ -270,8 +269,8 @@ func (c Config) withDefaults() Config {
 		c.REST.IdleConnTimeout = def.REST.IdleConnTimeout
 	}
 
-	// WS endpoints: для Demo выбираем wspap.okx.com, для prod — ws.okx.com.
-	// Если пользователь явно задал URL — НИЧЕГО не подменяем (он умнее SDK).
+	// WS endpoints: for Demo use wspap.okx.com, for prod use ws.okx.com.
+	// If the user explicitly set a URL — do NOT override it.
 	var defPublic string = def.WS.PublicURL
 	var defPrivate string = def.WS.PrivateURL
 	var defBusiness string = def.WS.BusinessURL
@@ -340,10 +339,9 @@ func (c Config) withDefaults() Config {
 	return c
 }
 
-// validate проверяет, что credentials заданы (для подписанных вызовов их
-// отсутствие приведёт к ошибке OKX). Публичные REST/WS работают и без ключей —
-// поэтому валидация делается «мягко»: пустые поля не запрещаем, но запоминаем
-// флаг `signed`, который проверим в auth.Signer.
+// validate checks that the required URL fields are set. Credentials are not
+// enforced here because public REST/WS work without keys — the auth.Signer
+// tracks a `signed` flag and enforces credentials at call time.
 func (c Config) validate() error {
 	if c.REST.BaseURL == "" {
 		return NewError(ErrorKindInvalidRequest, "", "config: REST.BaseURL is empty", nil)

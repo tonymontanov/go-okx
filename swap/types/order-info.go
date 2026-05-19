@@ -1,35 +1,35 @@
 /*
-ФАЙЛ: swap/types/order-info.go
+FILE: swap/types/order-info.go
 
-ОПИСАНИЕ:
-Структура с информацией об ордере SWAP. Используется как:
-  - возврат для CreateOrder/ModifyOrder/CancelOrder/Batch*;
-  - элемент списка GetOpenOrders;
-  - payload события WatchOpenOrders.
+DESCRIPTION:
+SWAP order information struct. Used as:
+  - return value for CreateOrder/ModifyOrder/CancelOrder/Batch*;
+  - element in the GetOpenOrders list;
+  - payload for WatchOpenOrders events.
 
-ПОЛЯ:
-  - OrderID       — биржевой id (ordId).
-  - ClientOrderID — клиентский id (clOrdId).
-  - InstID        — инструмент.
-  - Side          — направление.
-  - Price         — цена ордера.
-  - Size          — полный размер (sz, в контрактах).
-  - FilledSize    — сколько исполнено (accFillSz).
-  - State         — статус (live/partially_filled/filled/canceled).
-  - CreatedAtMs   — таймштамп создания (cTime, миллисекунды).
-  - UpdatedAtMs   — таймштамп последнего обновления (uTime).
-  - RateLimits    — слепок заголовков rate-limit, полученных вместе с ответом.
-    map[header]value (см. ответы на ТЗ, пункт 7).
+FIELDS:
+  - OrderID       — exchange order id (ordId).
+  - ClientOrderID — client order id (clOrdId).
+  - InstID        — instrument.
+  - Side          — direction.
+  - Price         — order price.
+  - Size          — total size (sz, in contracts).
+  - FilledSize    — how much has been filled (accFillSz).
+  - State         — status (live/partially_filled/filled/canceled).
+  - CreatedAtMs   — creation timestamp (cTime, milliseconds).
+  - UpdatedAtMs   — last update timestamp (uTime).
+  - RateLimits    — snapshot of rate-limit headers received with the response.
+    map[header]value.
 
-Все decimal-значения хранятся в decimal.Decimal — точно. Адаптер в core
-конвертирует их в float64 (`.InexactFloat64()`) на своей стороне.
+All decimal values are stored as decimal.Decimal — losslessly. The core adapter
+converts them to float64 (.InexactFloat64()) on its side.
 */
 
 package types
 
 import "github.com/shopspring/decimal"
 
-// OrderInfo — информация об ордере SWAP.
+// OrderInfo — SWAP order information.
 type OrderInfo struct {
 	OrderID       string
 	ClientOrderID string

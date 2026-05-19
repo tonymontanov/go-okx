@@ -1,88 +1,87 @@
 /*
-ФАЙЛ: types/funding-rate.go
+FILE: types/funding-rate.go
 
-ОПИСАНИЕ:
-FundingRate — текущая funding-ставка perp и метаданные следующего
-расчёта. FundingRateRecord — историческая запись (после settlement,
-с realized rate).
+DESCRIPTION:
+FundingRate — current perp funding rate and metadata for the next settlement.
+FundingRateRecord — historical record (after settlement, with realized rate).
 
-Маппятся из:
-  - GET /api/v5/public/funding-rate?instId=... → FundingRate
+Mapped from:
+  - GET /api/v5/public/funding-rate?instId=...         → FundingRate
   - GET /api/v5/public/funding-rate-history?instId=... → FundingRateRecord
-  - WS public channel "funding-rate" → FundingRate
+  - WS public channel "funding-rate"                   → FundingRate
 
-ВАЖНО О ЗНАКАХ:
-FundingRate > 0 ⇒ longs платят shorts (рынок bullish, perp выше index).
-FundingRate < 0 ⇒ shorts платят longs (рынок bearish, perp ниже index).
-Funding взимается каждые 8 часов (или 4 — зависит от инструмента),
-точная периодичность доступна в SymbolInfo.fundingInterval (отдельно).
+NOTE ON SIGNS:
+FundingRate > 0 ⇒ longs pay shorts (bullish market, perp above index).
+FundingRate < 0 ⇒ shorts pay longs (bearish market, perp below index).
+Funding is collected every 8 hours (or 4 — depends on the instrument);
+the exact frequency is available in SymbolInfo.fundingInterval (separately).
 
-HFT-применение:
-  - basis-trading (funding-arbitrage): подбираем сторону под знак;
-  - предиктивный сигнал: NextFundingRate за ~30 мин до settlement часто
-    стабилизируется и даёт оценку реального funding.
+HFT usage:
+  - basis-trading (funding-arbitrage): choose the side based on the sign;
+  - predictive signal: NextFundingRate ~30 min before settlement often
+    stabilizes and gives an estimate of the actual funding.
 */
 
 package types
 
 import "github.com/shopspring/decimal"
 
-// FundingRate — текущая funding-ставка perp.
+// FundingRate — current perp funding rate.
 type FundingRate struct {
-	// InstType — тип инструмента (всегда SWAP).
+	// InstType — instrument type (always SWAP).
 	InstType InstType
-	// InstID — идентификатор perp-инструмента.
+	// InstID — perp instrument identifier.
 	InstID string
-	// FundingRate — текущая ставка для применения на следующем settlement.
+	// FundingRate — current rate to be applied at the next settlement.
 	FundingRate decimal.Decimal
-	// NextFundingRate — оценка ставки на следующее окно после ближайшего
+	// NextFundingRate — estimated rate for the window after the next
 	// settlement (nextFundingRate).
 	NextFundingRate decimal.Decimal
-	// FundingTime — время следующего settlement в мс (fundingTime).
+	// FundingTime — next settlement time in ms (fundingTime).
 	FundingTime int64
-	// NextFundingTime — время settlement после ближайшего (nextFundingTime).
+	// NextFundingTime — settlement time after the next one (nextFundingTime).
 	NextFundingTime int64
-	// Method — метод расчёта ставки ("current_period" или "next_period").
+	// Method — rate calculation method ("current_period" or "next_period").
 	Method string
-	// MinFundingRate — нижняя граница (minFundingRate).
+	// MinFundingRate — lower bound (minFundingRate).
 	MinFundingRate decimal.Decimal
-	// MaxFundingRate — верхняя граница (maxFundingRate).
+	// MaxFundingRate — upper bound (maxFundingRate).
 	MaxFundingRate decimal.Decimal
-	// SettleState — состояние расчёта (settState: "processing"/"settled").
+	// SettleState — settlement state (settState: "processing"/"settled").
 	SettleState string
-	// SettleFundingRate — финальная realized ставка после settlement, если
+	// SettleFundingRate — final realized rate after settlement, if
 	// applicable (settFundingRate).
 	SettleFundingRate decimal.Decimal
-	// Premium — премия perp к индексу (premium).
+	// Premium — perp premium over the index (premium).
 	Premium decimal.Decimal
-	// ImpactValue — impact notional value, используемый в расчёте funding
-	// (impactValueOnPosition, в quote ccy).
+	// ImpactValue — impact notional value used in funding calculation
+	// (impactValueOnPosition, in quote ccy).
 	ImpactValue decimal.Decimal
-	// Ts — таймштамп snapshot'а в мс (ts).
+	// Ts — snapshot timestamp in ms (ts).
 	Ts int64
 }
 
-// FundingRateRecord — историческая запись funding после settlement.
+// FundingRateRecord — historical funding record after settlement.
 type FundingRateRecord struct {
-	// InstType — всегда SWAP.
+	// InstType — always SWAP.
 	InstType InstType
-	// InstID — perp-инструмент.
+	// InstID — perp instrument.
 	InstID string
-	// FundingRate — ставка, объявленная перед settlement (fundingRate).
+	// FundingRate — rate announced before settlement (fundingRate).
 	FundingRate decimal.Decimal
-	// RealizedRate — фактически реализованная ставка после settlement
-	// (realizedRate). Может отличаться от FundingRate из-за капов.
+	// RealizedRate — actually realized rate after settlement
+	// (realizedRate). May differ from FundingRate due to caps.
 	RealizedRate decimal.Decimal
-	// FundingTime — момент settlement в мс (fundingTime).
+	// FundingTime — settlement moment in ms (fundingTime).
 	FundingTime int64
-	// Method — метод расчёта.
+	// Method — calculation method.
 	Method string
-	// FormulaType — версия формулы ("noRate" / "withRate").
+	// FormulaType — formula version ("noRate" / "withRate").
 	FormulaType string
 }
 
-// FundingRates — слайс текущих funding-ставок.
+// FundingRates — slice of current funding rates.
 type FundingRates []FundingRate
 
-// FundingRateRecords — слайс исторических записей.
+// FundingRateRecords — slice of historical records.
 type FundingRateRecords []FundingRateRecord

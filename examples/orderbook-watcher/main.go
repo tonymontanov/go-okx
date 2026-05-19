@@ -1,15 +1,15 @@
 /*
-ФАЙЛ: examples/orderbook-watcher/main.go
+FILE: examples/orderbook-watcher/main.go
 
-ОПИСАНИЕ:
-Минимальный пример: подписываемся на public канал "books" OKX по BTC-USDT-SWAP,
-поддерживаем локальный стакан через orderbook.Engine с CRC32-валидацией
-(встроено в Stream().WatchOrderbook) и печатаем верхние bid/ask каждые 500 ms.
+DESCRIPTION:
+Minimal example: subscribes to the public OKX "books" channel for BTC-USDT-SWAP,
+maintains a local order book via orderbook.Engine with CRC32 validation
+(built into Stream().WatchOrderbook) and prints the top bid/ask every 500 ms.
 
-ЗАПУСК:
+RUN:
     go run ./examples/orderbook-watcher
 
-Ключи не нужны — канал публичный.
+Keys are not required — the channel is public.
 */
 
 package main

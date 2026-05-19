@@ -1,29 +1,29 @@
 /*
-ФАЙЛ: types/estimated-price.go
+FILE: types/estimated-price.go
 
-ОПИСАНИЕ:
-EstimatedPrice — ожидаемая цена delivery/exercise для FUTURES (delivery
-price на момент экспирации) или OPTION (settlement price). Доступна
-только в окне ~1 час до экспирации.
+DESCRIPTION:
+EstimatedPrice — expected delivery/exercise price for FUTURES (delivery
+price at expiration) or OPTION (settlement price). Available only in the
+~1 hour window before expiration.
 
-Маппится из:
+Mapped from:
   - GET /api/v5/public/estimated-price?instId=...
 
-Не применима к SPOT/SWAP (у perp нет экспирации).
+Not applicable to SPOT/SWAP (perpetuals have no expiration).
 */
 
 package types
 
 import "github.com/shopspring/decimal"
 
-// EstimatedPrice — ожидаемая delivery/exercise цена.
+// EstimatedPrice — expected delivery/exercise price.
 type EstimatedPrice struct {
-	// InstType — тип инструмента (FUTURES/OPTION).
+	// InstType — instrument type (FUTURES/OPTION).
 	InstType InstType
-	// InstID — идентификатор инструмента.
+	// InstID — instrument identifier.
 	InstID string
-	// SettlePx — ожидаемая цена расчёта (settlePx).
+	// SettlePx — expected settlement price (settlePx).
 	SettlePx decimal.Decimal
-	// Ts — таймштамп расчёта в мс (ts).
+	// Ts — settlement timestamp in ms (ts).
 	Ts int64
 }

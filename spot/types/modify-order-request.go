@@ -1,20 +1,20 @@
 /*
-ФАЙЛ: spot/types/modify-order-request.go
+FILE: spot/types/modify-order-request.go
 
-ОПИСАНИЕ:
-Запрос на amend (modify) ордера SPOT. Идентичен по семантике SWAP-варианту:
-OKX amend меняет только newSz/newPx; side/type — нет.
+DESCRIPTION:
+SPOT order amend (modify) request. Semantically identical to the SWAP variant:
+OKX amend changes only newSz/newPx; side/type cannot be changed.
 
-ИНВАРИАНТЫ:
-  - Должен быть задан ровно один идентификатор: OrderID или ClientOrderID.
-  - Должно быть задано хотя бы одно из NewSize/NewPrice.
+INVARIANTS:
+  - Exactly one identifier must be set: OrderID or ClientOrderID.
+  - At least one of NewSize/NewPrice must be set.
 */
 
 package types
 
 import "github.com/shopspring/decimal"
 
-// ModifyOrderRequest — запрос на amend ордера SPOT.
+// ModifyOrderRequest — SPOT order amend request.
 type ModifyOrderRequest struct {
 	InstID        string
 	OrderID       string

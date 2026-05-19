@@ -1,10 +1,10 @@
 /*
-ФАЙЛ: swap/trading_ws_test.go
+FILE: swap/trading_ws_test.go
 
-ОПИСАНИЕ:
-Contract-тесты WSTradingClient для SWAP. Зеркальные тесты для spot/
-trading_ws_test.go, плюс отдельная проверка MassCancel (применим
-полноценно на SWAP с реальным instFamily).
+DESCRIPTION:
+Contract tests for WSTradingClient for SWAP. Mirror tests of spot/
+trading_ws_test.go, plus a dedicated MassCancel check (fully applicable
+on SWAP with a real instFamily).
 */
 
 package swap
@@ -165,8 +165,8 @@ func TestWS_CancelOrder_HappyPath(t *testing.T) {
 }
 
 func TestWS_MassCancel_HappyPath(t *testing.T) {
-	// Сервер проверяет, что прилетел именно op="mass-cancel" с
-	// instType+instFamily в args.
+	// Server verifies that exactly op="mass-cancel" arrived with
+	// instType+instFamily in args.
 	var seenArgs string
 	var url string
 	var srv *httptest.Server

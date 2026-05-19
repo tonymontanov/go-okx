@@ -1,16 +1,15 @@
 /*
-ФАЙЛ: spot/stream_books_test.go
+FILE: spot/stream_books_test.go
 
-ОПИСАНИЕ:
-Smoke-тесты на новые book-каналы (Phase 2.3):
-  - WatchOrderbookBooks5 подписывается именно на канал "books5" и не
-    использует engine (snapshot-only);
-  - WatchOrderbookL2Tbt / WatchOrderbookBooks50L2Tbt подписываются на
-    нужные каналы (l2-tbt / books50-l2-tbt) и используют тот же
-    engine, что и обычный "books".
+DESCRIPTION:
+Smoke tests for the new book channels (Phase 2.3):
+  - WatchOrderbookBooks5 subscribes to the "books5" channel specifically and
+    does not use the engine (snapshot-only);
+  - WatchOrderbookL2Tbt / WatchOrderbookBooks50L2Tbt subscribe to the correct
+    channels (l2-tbt / books50-l2-tbt) and use the same engine as regular "books".
 
-Mock-сервер минимальный: принимает subscribe, отвечает ack, шлёт один
-hard-coded push с данными.
+The mock server is minimal: accepts subscribe, responds with ack, sends one
+hard-coded data push.
 */
 
 package spot
@@ -31,7 +30,7 @@ import (
 	"github.com/tonymontanov/go-okx/v2/spot/types"
 )
 
-// subProbe — минимальная структура subscribe-команды для парсинга.
+// subProbe — minimal subscribe-command structure for parsing.
 type subProbe struct {
 	Op   string `json:"op"`
 	Args []struct {
@@ -40,10 +39,10 @@ type subProbe struct {
 	} `json:"args"`
 }
 
-// startBookMockWS поднимает mock-сервер: на любую subscribe возвращает
-// ack + один push с заранее заготовленными bids/asks. seenChannel
-// сохраняет имя канала, на который реально пришла подписка — чтобы
-// убедиться, что наш SDK шлёт books5/books-l2-tbt/etc, а не "books".
+// startBookMockWS starts a mock server: responds to any subscribe with
+// ack + one push containing pre-baked bids/asks. seenChannel stores the
+// name of the channel that actually received the subscription — to verify
+// the SDK sends books5/books-l2-tbt/etc rather than "books".
 func startBookMockWS(t *testing.T, push string) (url string, srv *httptest.Server, seenChannel *atomic.Pointer[string]) {
 	t.Helper()
 	var upgrader websocket.Upgrader = websocket.Upgrader{
@@ -80,7 +79,7 @@ func startBookMockWS(t *testing.T, push string) (url string, srv *httptest.Serve
 				seenChannel.Store(&ch)
 				var ack string = `{"event":"subscribe","arg":{"channel":"` + ch + `","instId":"` + inst + `"}}`
 				_ = c.WriteMessage(websocket.TextMessage, []byte(ack))
-				// формируем push, подставляя channel/instId
+				// build push, substituting channel/instId
 				var enriched string = strings.ReplaceAll(push, "{CHANNEL}", ch)
 				enriched = strings.ReplaceAll(enriched, "{INSTID}", inst)
 				_ = c.WriteMessage(websocket.TextMessage, []byte(enriched))
@@ -91,10 +90,10 @@ func startBookMockWS(t *testing.T, push string) (url string, srv *httptest.Serve
 	return
 }
 
-// newSpotWithPublicWS делает spot.Client с public WS на mock-сервере.
-// Подписки идут через public conn (без login), поэтому signer не нужен,
-// но мы всё равно подкладываем заглушку — иначе DefaultConfig может
-// упасть на validation.
+// newSpotWithPublicWS creates a spot.Client with public WS pointing to the
+// mock server. Subscriptions go through the public conn (no login), so a
+// signer is not required, but we stub it anyway — otherwise DefaultConfig
+// may fail validation.
 func newSpotWithPublicWS(t *testing.T, wsURL string) *Client {
 	t.Helper()
 	var cfg okx.Config = okx.DefaultConfig()
@@ -117,7 +116,7 @@ func newSpotWithPublicWS(t *testing.T, wsURL string) *Client {
 }
 
 func TestStream_WatchOrderbookBooks5(t *testing.T) {
-	// snapshot-only push: одна snapshot, никаких action="snapshot"/"update"
+	// snapshot-only push: one snapshot, no action="snapshot"/"update"
 	var push string = `{"arg":{"channel":"{CHANNEL}","instId":"{INSTID}"},"data":[{"asks":[["60010","1"],["60011","2"]],"bids":[["60000","3"],["59999","4"]],"ts":"1700000000000"}]}`
 	var url string
 	var srv *httptest.Server
@@ -171,7 +170,7 @@ func TestStream_WatchOrderbookBooks5(t *testing.T) {
 }
 
 func TestStream_WatchOrderbookL2Tbt_SubscribesToCorrectChannel(t *testing.T) {
-	// Готовый snapshot, как обычный "books" push (action+seqId+checksum).
+	// Ready snapshot, like a regular "books" push (action+seqId+checksum).
 	var push string = `{"arg":{"channel":"{CHANNEL}","instId":"{INSTID}"},"action":"snapshot","data":[{"asks":[["60010","1"]],"bids":[["60000","1"]],"ts":"1700000000000","checksum":0,"seqId":1,"prevSeqId":-1}]}`
 	var url string
 	var srv *httptest.Server
@@ -190,7 +189,7 @@ func TestStream_WatchOrderbookL2Tbt_SubscribesToCorrectChannel(t *testing.T) {
 		got.Add(1)
 	}, nil)
 
-	// дождаться, пока пришёл push и engine отработал
+	// wait until the push arrives and the engine processes it
 	var deadline time.Time = time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
 		if got.Load() > 0 {

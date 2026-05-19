@@ -1,35 +1,35 @@
 /*
-ФАЙЛ: types/price-limit.go
+FILE: types/price-limit.go
 
-ОПИСАНИЕ:
-PriceLimit — текущие верхняя и нижняя границы допустимых цен ордера на
-инструменте. OKX отклоняет ордера за пределами этих границ с code 51004.
+DESCRIPTION:
+PriceLimit — current upper and lower bounds of valid order prices for an
+instrument. OKX rejects orders outside these bounds with code 51004.
 
-Маппится из:
+Mapped from:
   - GET /api/v5/public/price-limit?instId=...
   - WS public channel "price-limit"
 
-HFT-применение:
-  - pre-trade validation: проверить, что цена ордера попадает в [SellLmt,
-    BuyLmt] до отправки, чтобы не получить 51004 и не тратить лимиты;
-  - детектор фазы рынка: резкое сужение границ часто предшествует halt
-    или волатильному движению.
+HFT usage:
+  - pre-trade validation: verify that the order price falls within [SellLmt,
+    BuyLmt] before sending to avoid 51004 and wasting rate-limit quota;
+  - market phase detector: a sharp narrowing of the bounds often precedes a
+    trading halt or a volatile move.
 */
 
 package types
 
 import "github.com/shopspring/decimal"
 
-// PriceLimit — границы допустимых цен ордера.
+// PriceLimit — valid order price bounds for an instrument.
 type PriceLimit struct {
-	// InstType — тип инструмента.
+	// InstType — instrument type.
 	InstType InstType
-	// InstID — идентификатор инструмента.
+	// InstID — instrument identifier.
 	InstID string
-	// BuyLmt — максимальная цена buy-ордера (buyLmt).
+	// BuyLmt — maximum price for a buy order (buyLmt).
 	BuyLmt decimal.Decimal
-	// SellLmt — минимальная цена sell-ордера (sellLmt).
+	// SellLmt — minimum price for a sell order (sellLmt).
 	SellLmt decimal.Decimal
-	// Ts — таймштамп snapshot'а в мс (ts).
+	// Ts — snapshot timestamp in ms (ts).
 	Ts int64
 }

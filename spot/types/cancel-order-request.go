@@ -1,13 +1,13 @@
 /*
-ФАЙЛ: spot/types/cancel-order-request.go
+FILE: spot/types/cancel-order-request.go
 
-ОПИСАНИЕ:
-Запрос на отмену ордера SPOT. Должен быть задан ровно один из идентификаторов.
+DESCRIPTION:
+SPOT order cancellation request. Exactly one identifier must be set.
 */
 
 package types
 
-// CancelOrderRequest — запрос на отмену ордера SPOT.
+// CancelOrderRequest — SPOT order cancellation request.
 type CancelOrderRequest struct {
 	InstID        string
 	OrderID       string

@@ -1,21 +1,21 @@
 /*
-ФАЙЛ: swap/types/timeframe.go
+FILE: swap/types/timeframe.go
 
-ОПИСАНИЕ:
-Таймфрейм исторических свечей для SWAP-профиля. С момента выделения общего
-слоя — type-alias на commontypes.Timeframe + реэкспорт констант.
-Документация — в types/timeframe.go.
+DESCRIPTION:
+Historical candle timeframe for the SWAP profile. Since the common layer was
+extracted — a type alias for commontypes.Timeframe + re-export of constants.
+Documentation is in types/timeframe.go.
 */
 
 package types
 
 import commontypes "github.com/tonymontanov/go-okx/v2/types"
 
-// Timeframe — таймфрейм свечи. См. commontypes.Timeframe.
+// Timeframe — candle timeframe. See commontypes.Timeframe.
 type Timeframe = commontypes.Timeframe
 
 const (
-	// Sub-minute — поддерживается только агрегацией наверху, REST вернёт ошибку.
+	// Sub-minute — only supported by upstream aggregation; REST returns an error.
 	Timeframe1s  = commontypes.Timeframe1s
 	Timeframe15s = commontypes.Timeframe15s
 	Timeframe30s = commontypes.Timeframe30s

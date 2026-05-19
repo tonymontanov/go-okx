@@ -1,30 +1,30 @@
 /*
-ФАЙЛ: spot/trading.go
+FILE: spot/trading.go
 
-ОПИСАНИЕ:
-Доменный саб-клиент торговли для SPOT-профиля OKX. Эндпоинты OKX v5 общие
-для SPOT и SWAP — отличается только содержимое тела запроса:
-  - tdMode по умолчанию "cash" (на SPOT cross/isolated — это spot margin
-    trading, в текущей версии SDK не используется по умолчанию).
-  - НЕТ posSide.
-  - НЕТ reduceOnly.
-  - Для market BUY доступен tgtCcy (base_ccy/quote_ccy) — см. doc.
-  - sz измеряется в БАЗОВОЙ валюте (либо в quote_ccy для market BUY
-    при tgtCcy="quote_ccy").
+DESCRIPTION:
+Domain sub-client for SPOT profile trading. OKX v5 endpoints are shared
+between SPOT and SWAP — only the request body differs:
+  - tdMode defaults to "cash" (on SPOT cross/isolated means spot margin
+    trading, not used by default in the current SDK version).
+  - NO posSide.
+  - NO reduceOnly.
+  - For market BUY, tgtCcy (base_ccy/quote_ccy) is available — see doc.
+  - sz is measured in the BASE currency (or in quote_ccy for market BUY
+    when tgtCcy="quote_ccy").
 
-ИНВАРИАНТЫ:
-  - clOrdId [A-Za-z0-9]{1,32} (как и в SWAP — то же ограничение OKX).
-  - Batch size — 20 (как в SWAP).
-  - У OKX нет глобального cancel-all-by-instrument; эмулируем через
+INVARIANTS:
+  - clOrdId [A-Za-z0-9]{1,32} (same as SWAP — same OKX restriction).
+  - Batch size — 20 (same as SWAP).
+  - OKX has no global cancel-all-by-instrument; emulated via
     GetOpenOrders + CancelBatchOrders.
 
-ВНУТРЕННЕЕ СОСТОЯНИЕ:
-  - clOrdToOrd/ordToClOrd: те же маппинги ID, что и в SWAP.
+INTERNAL STATE:
+  - clOrdToOrd/ordToClOrd: same ID mappings as in SWAP.
 
-ЗАВИСИМОСТИ:
-  - internal/rest: транспорт.
-  - spot/types:    доменные структуры SPOT.
-  - github.com/tonymontanov/go-okx/v2: ошибки и категории rate-limit.
+DEPENDENCIES:
+  - internal/rest: transport.
+  - spot/types:    SPOT domain structures.
+  - github.com/tonymontanov/go-okx/v2: errors and rate-limit categories.
 */
 
 package spot
@@ -43,15 +43,15 @@ import (
 	"github.com/tonymontanov/go-okx/v2/spot/types"
 )
 
-// MaxBatchSize — лимит OKX на batch trade endpoint'ы (одинаков для SPOT/SWAP).
+// MaxBatchSize — OKX limit for batch trade endpoints (same for SPOT and SWAP).
 const MaxBatchSize = 20
 
-// clOrdIDPattern — допустимые символы и длина clOrdId.
-// OKX: case-sensitive alphanumerics [A-Za-z0-9]{1,32}; '_', '-', '.' отклоняются
-// кодом 51000.
+// clOrdIDPattern — allowed characters and length for clOrdId.
+// OKX: case-sensitive alphanumerics [A-Za-z0-9]{1,32}; '_', '-', '.' are rejected
+// with code 51000.
 var clOrdIDPattern = regexp.MustCompile(`^[A-Za-z0-9]{1,32}$`)
 
-// TradingClient — саб-клиент торговли SPOT.
+// TradingClient — SPOT trading sub-client.
 type TradingClient struct {
 	c *Client
 
@@ -70,8 +70,8 @@ func newTradingClient(c *Client) *TradingClient {
 	}
 }
 
-// orderActionResponseEntry — структура отдельного результата для всех
-// trade/* endpoint'ов (один формат у OKX).
+// orderActionResponseEntry — per-item result structure for all trade/*
+// endpoints (OKX uses a single format).
 type orderActionResponseEntry struct {
 	OrdID   string `json:"ordId"`
 	ClOrdID string `json:"clOrdId"`
@@ -80,9 +80,9 @@ type orderActionResponseEntry struct {
 	SMsg    string `json:"sMsg"`
 }
 
-// uniqSortedInstIDsCreate — уникальный отсортированный set InstID из батча,
-// нужен для RateLimitEvent.Symbols (внешний rate-limiter моделирует лимиты
-// per (UID + InstId)).
+// uniqSortedInstIDsCreate — unique sorted set of InstIDs from a batch,
+// required for RateLimitEvent.Symbols (the external rate-limiter models
+// limits per (UID + InstId)).
 func uniqSortedInstIDsCreate(chunk []types.CreateOrderRequest) []string {
 	if len(chunk) == 0 {
 		return nil
@@ -141,8 +141,8 @@ func setToSortedSlice(set map[string]struct{}) []string {
 	return out
 }
 
-// orderTypeFromTIF маппит TIF в OrderType OKX. Идентично swap (один и тот же
-// enum, см. spot/types/aliases.go).
+// orderTypeFromTIF maps TIF to OKX OrderType. Identical to swap (same enum,
+// see spot/types/aliases.go).
 func orderTypeFromTIF(tif types.TimeInForceType) types.OrderType {
 	switch tif {
 	case types.TimeInForceTypeIOC:
@@ -159,14 +159,14 @@ func orderTypeFromTIF(tif types.TimeInForceType) types.OrderType {
 }
 
 /*
-CreateOrder создаёт ордер SPOT.
+CreateOrder creates a SPOT order.
 
-Параметры:
-  - ctx: контекст с дедлайном.
-  - req: параметры ордера. InstID/Side/Size — обязательны; Price обязателен
-    для всех OrderType кроме market.
+Parameters:
+  - ctx: context with deadline.
+  - req: order parameters. InstID/Side/Size are required; Price is required
+    for all OrderTypes except market.
 
-Возвращает OrderInfo с заполненным OrderID/ClientOrderID/CreatedAtMs/RateLimits.
+Returns OrderInfo with OrderID/ClientOrderID/CreatedAtMs/RateLimits populated.
 */
 func (t *TradingClient) CreateOrder(ctx context.Context, req types.CreateOrderRequest) (types.OrderInfo, error) {
 	var info types.OrderInfo
@@ -227,7 +227,7 @@ func (t *TradingClient) CreateOrder(ctx context.Context, req types.CreateOrderRe
 	return info, nil
 }
 
-// buildCreateOrderBody собирает map[string]any для создания SPOT-ордера.
+// buildCreateOrderBody assembles map[string]any for SPOT order creation.
 func (t *TradingClient) buildCreateOrderBody(req types.CreateOrderRequest) (map[string]any, error) {
 	if req.InstID == "" {
 		return nil, okx.NewError(okx.ErrorKindInvalidRequest, "", "trading.CreateOrder: InstID is empty", nil)
@@ -268,8 +268,8 @@ func (t *TradingClient) buildCreateOrderBody(req types.CreateOrderRequest) (map[
 	if req.ClientOrderID != "" {
 		body["clOrdId"] = req.ClientOrderID
 	}
-	// tgtCcy актуален только для market — для limit OKX игнорирует поле,
-	// но явно не отправляем, чтобы не плодить лишних полей.
+	// tgtCcy is only meaningful for market orders — OKX ignores it for limit,
+	// but we omit it explicitly to avoid sending unnecessary fields.
 	if orderType == types.OrderTypeMarket && req.TgtCcy != "" {
 		body["tgtCcy"] = string(req.TgtCcy)
 	}
@@ -283,9 +283,9 @@ func (t *TradingClient) buildCreateOrderBody(req types.CreateOrderRequest) (map[
 	return body, nil
 }
 
-// buildAmendOrderBody — общий конструктор тела для amend-order (одиночный
-// и batch варианты, REST и WS). Валидация вынесена сюда, чтобы WS и REST
-// возвращали одинаковые типизированные ошибки на одинаковые входные данные.
+// buildAmendOrderBody — shared body builder for amend-order (single and batch
+// variants, REST and WS). Validation is centralised here so that WS and REST
+// return the same typed errors for the same inputs.
 func buildAmendOrderBody(req types.ModifyOrderRequest) (map[string]any, error) {
 	if req.InstID == "" {
 		return nil, okx.NewError(okx.ErrorKindInvalidRequest, "", "trading.ModifyOrder: InstID is empty", nil)
@@ -316,7 +316,7 @@ func buildAmendOrderBody(req types.ModifyOrderRequest) (map[string]any, error) {
 	return body, nil
 }
 
-// buildCancelOrderBody — общий конструктор тела cancel-order (REST и WS).
+// buildCancelOrderBody — shared body builder for cancel-order (REST and WS).
 func buildCancelOrderBody(req types.CancelOrderRequest) (map[string]any, error) {
 	if req.InstID == "" {
 		return nil, okx.NewError(okx.ErrorKindInvalidRequest, "", "trading.CancelOrder: InstID is empty", nil)
@@ -334,8 +334,8 @@ func buildCancelOrderBody(req types.CancelOrderRequest) (map[string]any, error) 
 	return body, nil
 }
 
-// placeholderInfosModify — REST/WS-симметричная заглушка при ошибке
-// transport-уровня (chunk не успел уйти).
+// placeholderInfosModify — REST/WS-symmetric placeholder on transport-level
+// error (chunk failed to send).
 func placeholderInfosModify(chunk []types.ModifyOrderRequest) []types.OrderInfo {
 	var out []types.OrderInfo = make([]types.OrderInfo, 0, len(chunk))
 	var i int
@@ -352,7 +352,7 @@ func placeholderInfosModify(chunk []types.ModifyOrderRequest) []types.OrderInfo 
 }
 
 /*
-ModifyOrder — amend ордера. OKX меняет только sz/px; side/type — нет.
+ModifyOrder — amend an order. OKX only changes sz/px; side/type cannot be changed.
 */
 func (t *TradingClient) ModifyOrder(ctx context.Context, req types.ModifyOrderRequest) (types.OrderInfo, error) {
 	var info types.OrderInfo
@@ -411,7 +411,7 @@ func (t *TradingClient) ModifyOrder(ctx context.Context, req types.ModifyOrderRe
 }
 
 /*
-CancelOrder отменяет один ордер. Должен быть задан ровно один из идентификаторов.
+CancelOrder cancels a single order. Exactly one identifier must be set.
 */
 func (t *TradingClient) CancelOrder(ctx context.Context, req types.CancelOrderRequest) error {
 	var body map[string]any
@@ -457,9 +457,9 @@ func (t *TradingClient) CancelOrder(ctx context.Context, req types.CancelOrderRe
 }
 
 /*
-CreateBatchOrders создаёт пакет ордеров. До 20 за чанк. Возврат семантически
-тот же, что и в swap: позиция в выходном слайсе совпадает с позицией во входном,
-ошибки агрегируются через errors.Join.
+CreateBatchOrders creates a batch of orders. Up to 20 per chunk. Return semantics
+are the same as in swap: the position in the output slice matches the position in
+the input; errors are aggregated via errors.Join.
 */
 func (t *TradingClient) CreateBatchOrders(ctx context.Context, reqs []types.CreateOrderRequest) ([]types.OrderInfo, error) {
 	if len(reqs) == 0 {
@@ -596,7 +596,7 @@ func placeholderInfos(chunk []types.CreateOrderRequest) []types.OrderInfo {
 }
 
 /*
-ModifyBatchOrders — пакетный amend ордеров (до 20 за чанк).
+ModifyBatchOrders — batch amend of orders (up to 20 per chunk).
 */
 func (t *TradingClient) ModifyBatchOrders(ctx context.Context, reqs []types.ModifyOrderRequest) ([]types.OrderInfo, error) {
 	if len(reqs) == 0 {
@@ -725,7 +725,7 @@ func (t *TradingClient) modifyBatchChunk(ctx context.Context, chunk []types.Modi
 }
 
 /*
-CancelBatchOrders отменяет пакет ордеров (до 20 за чанк).
+CancelBatchOrders cancels a batch of orders (up to 20 per chunk).
 */
 func (t *TradingClient) CancelBatchOrders(ctx context.Context, reqs []types.CancelOrderRequest) error {
 	if len(reqs) == 0 {
@@ -810,8 +810,8 @@ func (t *TradingClient) cancelBatchChunk(ctx context.Context, chunk []types.Canc
 }
 
 /*
-CancelAllOrders отменяет ВСЕ активные ордера по инструменту через
-GetOpenOrders → CancelBatchOrders. Зеркало SWAP-реализации.
+CancelAllOrders cancels ALL active orders for an instrument via
+GetOpenOrders → CancelBatchOrders. Mirrors the SWAP implementation.
 */
 func (t *TradingClient) CancelAllOrders(ctx context.Context, instID string) error {
 	if instID == "" {
@@ -840,7 +840,7 @@ func (t *TradingClient) CancelAllOrders(ctx context.Context, instID string) erro
 }
 
 /*
-CancelForgottenOrders отменяет ордера старше maxAge.
+CancelForgottenOrders cancels orders older than maxAge.
 */
 func (t *TradingClient) CancelForgottenOrders(ctx context.Context, instID string, maxAge time.Duration) ([]types.OrderInfo, error) {
 	if instID == "" {
@@ -877,25 +877,24 @@ func (t *TradingClient) CancelForgottenOrders(ctx context.Context, instID string
 }
 
 /*
-CancelAllAfter вооружает (или disarm-ит) серверный таймер dead-man's
-switch'а: если в течение `timeout` секунд клиент не вызовет endpoint
-снова, OKX автоматически отменит ВСЕ открытые ордера учётки
-(не только SPOT — всех инструментов).
+CancelAllAfter arms (or disarms) the server-side dead-man's switch timer:
+if the client does not call the endpoint again within `timeout` seconds,
+OKX will automatically cancel ALL open orders for the account
+(not just SPOT — all instruments).
 
-ПАРАМЕТРЫ:
-  - timeout > 0  (10..120s по spec OKX): арм. TriggerTimeMs в ответе —
-    момент, когда биржа применит cancel-all-если-нет-refresh.
-  - timeout == 0: disarm. TriggerTimeMs в ответе = 0.
+PARAMETERS:
+  - timeout > 0  (10..120s per OKX spec): arm. TriggerTimeMs in the response
+    is the moment when the exchange will apply cancel-all if not refreshed.
+  - timeout == 0: disarm. TriggerTimeMs in the response = 0.
 
-ИСПОЛЬЗОВАНИЕ В HFT:
-В hot-loop стратегии вызывайте каждые ~⅓ timeout (например, для
-timeout=30s — каждые 10s). Это даёт большой запас на сетевые задержки.
+HFT USAGE:
+In the hot-loop strategy, call every ~⅓ of timeout (e.g. for timeout=30s —
+every 10s). This provides a large buffer for network delays.
 
-ОТНОШЕНИЕ К MASSCANCEL:
-mass-cancel (WS, Phase 2.1) — синхронный panic-button «отмени всё
-сейчас». cancel-all-after — асинхронный «отмени всё через N секунд,
-если я не обновлю». Используются совместно: arm на старте, mass-cancel
-или disarm на graceful shutdown.
+RELATION TO MASSCANCEL:
+mass-cancel (WS, Phase 2.1) — synchronous panic button "cancel everything now".
+cancel-all-after — asynchronous "cancel everything in N seconds if I do not
+refresh". Used together: arm on start, mass-cancel or disarm on graceful shutdown.
 */
 func (t *TradingClient) CancelAllAfter(ctx context.Context, timeout time.Duration) (types.CancelAllAfterResult, error) {
 	var out types.CancelAllAfterResult
@@ -944,9 +943,9 @@ func (t *TradingClient) CancelAllAfter(ctx context.Context, timeout time.Duratio
 	return out, nil
 }
 
-// parseInt64Lossy парсит строку OKX-таймштампа в int64; при ошибке
-// возвращает 0. Используется только для безопасного парсинга числовых
-// строк, для которых ошибка не критична (не блокирующая контракт).
+// parseInt64Lossy parses an OKX timestamp string to int64; returns 0 on error.
+// Used only for safe parsing of numeric strings where an error is non-critical
+// (does not block the contract).
 func parseInt64Lossy(s string) (int64, error) {
 	var v int64
 	var err error
@@ -954,9 +953,8 @@ func parseInt64Lossy(s string) (int64, error) {
 	return v, err
 }
 
-// strconvAtoi64 — extracted, чтобы избежать прямой зависимости на strconv
-// из этого файла (стиль файла — минимум импортов; strconv уже импортирован
-// в других файлах пакета).
+// strconvAtoi64 — extracted to avoid a direct strconv import in this file
+// (file style: minimal imports; strconv is already imported in other package files).
 func strconvAtoi64(s string) (int64, error) {
 	var n int64
 	var i int
@@ -970,7 +968,7 @@ func strconvAtoi64(s string) (int64, error) {
 	return n, nil
 }
 
-// rememberMapping добавляет ClOrdID ↔ OrdID и фиксирует время создания.
+// rememberMapping adds ClOrdID ↔ OrdID and records the creation time.
 func (t *TradingClient) rememberMapping(clOrdID, ordID string, createdAtMs int64) {
 	if clOrdID == "" || ordID == "" {
 		return
@@ -982,7 +980,7 @@ func (t *TradingClient) rememberMapping(clOrdID, ordID string, createdAtMs int64
 	t.mu.Unlock()
 }
 
-// forgetMappingByClOrdOrOrd удаляет маппинг по любому из идентификаторов.
+// forgetMappingByClOrdOrOrd removes the mapping by either identifier.
 func (t *TradingClient) forgetMappingByClOrdOrOrd(clOrdID, ordID string) {
 	if clOrdID == "" && ordID == "" {
 		return
@@ -1000,7 +998,7 @@ func (t *TradingClient) forgetMappingByClOrdOrOrd(clOrdID, ordID string) {
 	delete(t.createdAtMs, clOrdID)
 }
 
-// OrderIDByClientID возвращает OrdID по ClOrdID, если он известен SDK.
+// OrderIDByClientID returns OrdID by ClOrdID if it is known to the SDK.
 func (t *TradingClient) OrderIDByClientID(clOrdID string) (string, bool) {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
@@ -1010,7 +1008,7 @@ func (t *TradingClient) OrderIDByClientID(clOrdID string) (string, bool) {
 	return v, ok
 }
 
-// ClientIDByOrderID возвращает ClOrdID по OrdID, если он известен SDK.
+// ClientIDByOrderID returns ClOrdID by OrdID if it is known to the SDK.
 func (t *TradingClient) ClientIDByOrderID(ordID string) (string, bool) {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
@@ -1021,8 +1019,8 @@ func (t *TradingClient) ClientIDByOrderID(ordID string) (string, bool) {
 }
 
 /*
-SyncOrderMappings перезагружает маппинги из открытых ордеров на бирже.
-Удаляет из локальной мапы ордера, которых нет в ответе биржи.
+SyncOrderMappings reloads mappings from open orders on the exchange.
+Removes from the local map any orders not present in the exchange response.
 */
 func (t *TradingClient) SyncOrderMappings(ctx context.Context, instID string) error {
 	if instID == "" {

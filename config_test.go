@@ -1,10 +1,10 @@
 /*
-ФАЙЛ: config_test.go
+FILE: config_test.go
 
-ОПИСАНИЕ:
-Unit-тесты для Config.withDefaults(). Главное — поведение Demo-флага: при
-Demo=true WS-эндпоинты автоматически переключаются на wspap.okx.com, кроме
-случая, когда пользователь явно задал URL.
+DESCRIPTION:
+Unit tests for Config.withDefaults(). The main focus is Demo flag behavior:
+when Demo=true WS endpoints are automatically switched to wspap.okx.com,
+except when the user explicitly set a URL.
 */
 
 package okx
@@ -43,7 +43,7 @@ func TestWithDefaults_ExplicitWsUrlsOverrideDemo(t *testing.T) {
 	if cfg.WS.PublicURL != custom {
 		t.Fatalf("explicit PublicURL must be preserved, got %q", cfg.WS.PublicURL)
 	}
-	// при этом private должен подставиться из Demo
+	// private should still fall back to Demo
 	if cfg.WS.PrivateURL != DemoWsPrivateURL {
 		t.Fatalf("PrivateURL should fall back to demo, got %q", cfg.WS.PrivateURL)
 	}

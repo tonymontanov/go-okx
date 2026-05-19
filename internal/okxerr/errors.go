@@ -1,13 +1,13 @@
 /*
-ФАЙЛ: internal/okxerr/errors.go
+FILE: internal/okxerr/errors.go
 
-ОПИСАНИЕ:
-Тип ошибки SDK + категории + маппинг кодов OKX. Вынесен в internal-пакет,
-чтобы любой internal/* пакет (rest, ws, codec) мог использовать его без
-import-cycle на корневой пакет okx. Корневой пакет okx переэкспортирует
-эти сущности через type alias.
+DESCRIPTION:
+SDK error type + categories + OKX code mapping. Placed in an internal package
+so that any internal/* package (rest, ws, codec) can use it without an import
+cycle on the root okx package. The root okx package re-exports these entities
+via type aliases.
 
-См. также: errors.go в корне (реэкспорт).
+See also: errors.go in the root (re-export).
 */
 
 package okxerr
@@ -17,7 +17,7 @@ import (
 	"fmt"
 )
 
-// ErrorKind — категория ошибки SDK.
+// ErrorKind — SDK error category.
 type ErrorKind uint8
 
 const (
@@ -29,7 +29,7 @@ const (
 	ErrorKindExchange
 )
 
-// String — человекочитаемое имя категории.
+// String — human-readable category name.
 func (k ErrorKind) String() string {
 	switch k {
 	case ErrorKindNetwork:
@@ -47,7 +47,7 @@ func (k ErrorKind) String() string {
 	}
 }
 
-// Error — единый тип ошибок SDK.
+// Error — unified SDK error type.
 type Error struct {
 	Kind       ErrorKind
 	HTTPStatus int
@@ -56,7 +56,7 @@ type Error struct {
 	Cause      error
 }
 
-// Error реализует интерфейс error.
+// Error implements the error interface.
 func (e *Error) Error() string {
 	switch {
 	case e.OKXCode != "" && e.Cause != nil:
@@ -70,27 +70,27 @@ func (e *Error) Error() string {
 	}
 }
 
-// Unwrap — для errors.Is/As.
+// Unwrap — for errors.Is/As.
 func (e *Error) Unwrap() error { return e.Cause }
 
-// New создаёт *Error.
+// New creates a *Error.
 func New(kind ErrorKind, code, msg string, cause error) *Error {
 	return &Error{Kind: kind, OKXCode: code, Message: msg, Cause: cause}
 }
 
-// IsNetwork возвращает true, если err имеет категорию Network.
+// IsNetwork returns true if err has category Network.
 func IsNetwork(err error) bool { return matchKind(err, ErrorKindNetwork) }
 
-// IsRateLimit возвращает true, если err имеет категорию RateLimit.
+// IsRateLimit returns true if err has category RateLimit.
 func IsRateLimit(err error) bool { return matchKind(err, ErrorKindRateLimit) }
 
-// IsAuth возвращает true, если err имеет категорию Auth.
+// IsAuth returns true if err has category Auth.
 func IsAuth(err error) bool { return matchKind(err, ErrorKindAuth) }
 
-// IsInvalidRequest возвращает true, если err имеет категорию InvalidRequest.
+// IsInvalidRequest returns true if err has category InvalidRequest.
 func IsInvalidRequest(err error) bool { return matchKind(err, ErrorKindInvalidRequest) }
 
-// IsExchange возвращает true, если err имеет категорию Exchange.
+// IsExchange returns true if err has category Exchange.
 func IsExchange(err error) bool { return matchKind(err, ErrorKindExchange) }
 
 func matchKind(err error, kind ErrorKind) bool {
@@ -102,14 +102,14 @@ func matchKind(err error, kind ErrorKind) bool {
 }
 
 /*
-MapOKXCode возвращает категорию ошибки SDK для конкретного кода OKX.
+MapOKXCode returns the SDK error category for a specific OKX code.
 
-Покрытые группы:
+Covered groups:
   - 50011, 50061     — rate limit;
-  - 50100..50114     — authentication / permission / IP-whitelist;
+  - 50100..50114     — authentication / permission / IP whitelist;
   - 51000..51020, 51119 — invalid params;
-  - 51008            — недостаточно средств (Exchange);
-  - всё прочее       — ErrorKindExchange.
+  - 51008            — insufficient funds (Exchange);
+  - everything else  — ErrorKindExchange.
 */
 func MapOKXCode(code, msg string) ErrorKind {
 	_ = msg
@@ -134,8 +134,8 @@ func MapOKXCode(code, msg string) ErrorKind {
 	}
 }
 
-// MapHTTPStatus возвращает категорию ошибки SDK для HTTP-статуса (когда тело
-// ответа невалидно или не содержит OKX-кода).
+// MapHTTPStatus returns the SDK error category for an HTTP status code (when
+// the response body is invalid or does not contain an OKX code).
 func MapHTTPStatus(status int) ErrorKind {
 	switch {
 	case status == 429:

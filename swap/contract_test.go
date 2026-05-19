@@ -1,25 +1,24 @@
 /*
-ФАЙЛ: swap/contract_test.go
+FILE: swap/contract_test.go
 
-ОПИСАНИЕ:
-Contract-тесты swap-клиента (§13 ТЗ). Они проверяют, что наш парсер корректно
-маппит реальные JSON-ответы OKX v5 в доменные структуры. Эти фикстуры
-скопированы из официальной документации OKX (api/v5) и из реальных ответов
-песочницы.
+DESCRIPTION:
+Contract tests for the swap client. They verify that the parser correctly
+maps real OKX v5 JSON responses into domain structs. These fixtures are
+copied from the official OKX documentation (api/v5) and real sandbox responses.
 
-Покрытие:
+Coverage:
   - GetSymbolInfo:           /api/v5/public/instruments (instType=SWAP)
   - GetOrderBook:            /api/v5/market/books
   - GetHistoricalCandles:    /api/v5/market/history-candles
   - GetPositions:            /api/v5/account/positions
   - GetOpenOrders:           /api/v5/trade/orders-pending
   - CreateOrder happy-path:  /api/v5/trade/order
-  - CreateOrder reject:      sCode != "0" → возвращаем *okx.Error
+  - CreateOrder reject:      sCode != "0" → returns *okx.Error
   - CancelOrder:             /api/v5/trade/cancel-order
-  - rate-limit headers пробрасываются в OrderInfo.RateLimits
-  - OKX-уровневая ошибка с code != "0" маппится в *okx.Error.OKXCode
+  - rate-limit headers are propagated to OrderInfo.RateLimits
+  - OKX-level error with code != "0" is mapped to *okx.Error.OKXCode
 
-Тесты используют локальный httptest.Server, никаких походов в сеть.
+Tests use a local httptest.Server; no network calls are made.
 */
 
 package swap
@@ -39,7 +38,7 @@ import (
 	"github.com/tonymontanov/go-okx/v2/swap/types"
 )
 
-// mustDec — хелпер для тестов, парсит строку в decimal.Decimal или фейлит.
+// mustDec — test helper, parses string to decimal.Decimal or fails.
 func mustDec(s string) decimal.Decimal {
 	var d decimal.Decimal
 	var err error
@@ -50,9 +49,9 @@ func mustDec(s string) decimal.Decimal {
 	return d
 }
 
-// mockOKX поднимает httptest.Server, маршрутизирующий запросы по path и
-// возвращающий заранее заготовленный JSON. Все остальные path возвращают 404
-// чтобы тест явно падал, если запрос ушёл не туда.
+// mockOKX starts an httptest.Server that routes requests by path and returns
+// pre-baked JSON. All other paths return 404 so the test fails explicitly if
+// the request went to the wrong endpoint.
 func mockOKX(t *testing.T, routes map[string]string) (*httptest.Server, *okx.Client) {
 	t.Helper()
 
@@ -213,7 +212,7 @@ func TestContract_GetHistoricalCandles_SubMinute(t *testing.T) {
 }
 
 func TestContract_GetBalance(t *testing.T) {
-	// Сокращённая, но реалистичная фикстура из OKX docs v5 (Get Balance).
+	// Shortened but realistic fixture from OKX docs v5 (Get Balance).
 	var fixture string = `{
 		"code":"0","msg":"",
 		"data":[{
@@ -262,7 +261,7 @@ func TestContract_GetBalance(t *testing.T) {
 	if len(bal.Details) != 2 {
 		t.Fatalf("details: got %d", len(bal.Details))
 	}
-	// проверим, что per-currency маппинг работает корректно
+	// verify that per-currency mapping works correctly
 	var usdt *types.BalanceDetail
 	var i int
 	for i = 0; i < len(bal.Details); i++ {
@@ -283,7 +282,7 @@ func TestContract_GetBalance(t *testing.T) {
 }
 
 func TestContract_GetBalance_FilteredCcy(t *testing.T) {
-	// Проверяем, что параметр ccy=BTC,USDT уходит в query.
+	// Verify that the ccy=BTC,USDT parameter is sent in the query.
 	var seen string
 	var srv *httptest.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		seen = r.URL.Query().Get("ccy")
@@ -415,7 +414,7 @@ func TestContract_CreateOrder_HappyPath(t *testing.T) {
 	if info.RateLimits["ratelimit-remaining"] != "59" {
 		t.Fatalf("missing rate-limit header, got %v", info.RateLimits)
 	}
-	// mapping должен запомниться
+	// mapping must be remembered
 	var ord string
 	var ok bool
 	ord, ok = swapOf(client).Trading().OrderIDByClientID("abc")
@@ -425,7 +424,7 @@ func TestContract_CreateOrder_HappyPath(t *testing.T) {
 }
 
 func TestContract_CreateOrder_RejectedByExchange(t *testing.T) {
-	// Реальный ответ OKX, когда отдельный ордер отклонён биржей.
+	// Actual OKX response when an individual order is rejected by the exchange.
 	var fixture string = `{
 		"code":"0","msg":"",
 		"data":[{
@@ -459,7 +458,7 @@ func TestContract_CreateOrder_RejectedByExchange(t *testing.T) {
 }
 
 func TestContract_CreateOrder_TopLevelError(t *testing.T) {
-	// Случай, когда биржа сразу отказала на уровне обёртки (auth/etc).
+	// Case when the exchange rejected at the wrapper level (auth/etc).
 	var fixture string = `{"code":"50111","msg":"Invalid OK-ACCESS-KEY","data":[]}`
 	var _, client = mockOKX(t, map[string]string{
 		"/api/v5/trade/order": fixture,

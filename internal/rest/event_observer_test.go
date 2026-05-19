@@ -1,18 +1,17 @@
 /*
-ФАЙЛ: internal/rest/event_observer_test.go
+FILE: internal/rest/event_observer_test.go
 
-ОПИСАНИЕ:
-Unit-тесты на расширенный rate-limit observer (v2.2.0+). Старый observer
-покрыт observer_test.go; здесь — только новый event-observer и контракт
-взаимодействия двух observer'ов.
+DESCRIPTION:
+Unit tests for the extended rate-limit observer (v2.2.0+). The old observer is
+covered by observer_test.go; here — only the new event-observer and the contract
+for two-observer coexistence.
 
-Покрытие:
-  - event-observer вызывается с правильным (endpoint, method, headers, meta);
-  - OrderCount / Symbols / Category прокидываются ровно как опции запроса
-    были выставлены доменным методом;
-  - meta = zero value для запросов без опций;
-  - если заданы оба observer'а — оба вызываются (legacy первый, event второй);
-  - nil event-observer безопасен.
+Coverage:
+  - event-observer is called with the correct (endpoint, method, headers, meta);
+  - OrderCount / Symbols / Category are forwarded exactly as set by the domain method;
+  - meta = zero value for requests without options;
+  - if both observers are set — both are called (legacy first, event second);
+  - nil event-observer is safe.
 */
 
 package rest
@@ -29,8 +28,8 @@ import (
 	"github.com/tonymontanov/go-okx/v2/internal/okxlog"
 )
 
-// newEventObserverTestClient создаёт rest.Client с указанным event-observer'ом
-// и опционально legacy observer'ом — для тестов их сосуществования.
+// newEventObserverTestClient creates a rest.Client with the given event-observer
+// and an optional legacy observer — for coexistence tests.
 func newEventObserverTestClient(
 	t *testing.T,
 	srv *httptest.Server,
@@ -92,7 +91,7 @@ func TestRateLimitEventObserver_CarriesMetaForBatch(t *testing.T) {
 		t.Fatalf("endpoint = %q", gotEndpoint)
 	}
 	if gotMethod != "POST" {
-		// event-observer всегда нормализует method к UPPER — это контракт.
+		// event-observer always normalizes method to UPPER — this is the contract.
 		t.Fatalf("method = %q, want POST (uppercased)", gotMethod)
 	}
 	if gotMeta.OrderCount != 17 {
@@ -119,7 +118,7 @@ func TestRateLimitEventObserver_ZeroMetaForUnannotatedRequest(t *testing.T) {
 	}
 
 	var c *Client = newEventObserverTestClient(t, srv, nil, event)
-	// Request без Meta — observer должен получить zero value, не panic.
+	// Request without Meta — observer must receive zero value, not panic.
 	var _, _, err = c.Do(context.Background(), Options{Method: "GET", Path: "/api/v5/public/time"})
 	if err != nil {
 		t.Fatalf("Do: %v", err)
@@ -136,11 +135,11 @@ func TestRateLimitEventObserver_ZeroMetaForUnannotatedRequest(t *testing.T) {
 	}
 }
 
-// TestRateLimitEventObserver_BothObserversFireInOrder — критически важный
-// контракт: если пользователь подписан и на legacy, и на event observer
-// (что нужно во время миграции), оба должны быть вызваны. Это даёт
-// корректную backwards-compat: существующие подписчики продолжают работать
-// без изменений и могут постепенно переходить на event-API.
+// TestRateLimitEventObserver_BothObserversFireInOrder — critical contract:
+// if the user is subscribed to both legacy and event observer (needed during
+// migration), both must be called. This provides correct backwards-compat:
+// existing subscribers continue to work unchanged and can migrate to the
+// event API gradually.
 func TestRateLimitEventObserver_BothObserversFireInOrder(t *testing.T) {
 	var srv *httptest.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("ratelimit-remaining", "42")
@@ -172,8 +171,8 @@ func TestRateLimitEventObserver_BothObserversFireInOrder(t *testing.T) {
 	}
 }
 
-// TestRateLimitEventObserver_NilSafe — nil event-observer не должен влиять
-// на работу клиента (включая случай, когда legacy observer задан).
+// TestRateLimitEventObserver_NilSafe — nil event-observer must not affect
+// the client (including the case when a legacy observer is set).
 func TestRateLimitEventObserver_NilSafe(t *testing.T) {
 	var srv *httptest.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)

@@ -1,36 +1,36 @@
 /*
-ФАЙЛ: types/bill.go
+FILE: types/bill.go
 
-ОПИСАНИЕ:
-Bill — одна запись в журнале операций по аккаунту (account bills). Это
-любое движение средств: trade fill, funding payment, margin transfer,
-deposit/withdrawal, liquidation, ADL, fee rebate, и т.д.
+DESCRIPTION:
+Bill — a single entry in the account operations ledger (account bills). This is
+any movement of funds: trade fill, funding payment, margin transfer,
+deposit/withdrawal, liquidation, ADL, fee rebate, etc.
 
-Маппится из:
-  - GET /api/v5/account/bills          — последние 7 дней
-  - GET /api/v5/account/bills-archive  — последние 3 месяца
+Mapped from:
+  - GET /api/v5/account/bills          — last 7 days
+  - GET /api/v5/account/bills-archive  — last 3 months
 
-ОТЛИЧИЕ ОТ Fill:
-Fill — это запись об одном trade-event ордера (price, sz, fee).
-Bill — это запись об одном изменении баланса (любого происхождения).
-Один fill порождает 1-2 bill'а (списание fee + изменение equity);
-funding payment не создаёт fill, но создаёт bill.
+DIFFERENCE FROM Fill:
+Fill — a record of a single trade event for an order (price, sz, fee).
+Bill — a record of a single balance change (of any origin).
+One fill produces 1-2 bills (fee debit + equity change);
+a funding payment does not create a fill, but does create a bill.
 
-HFT-применение:
-  - PnL reconciliation: bills — единственный полный источник истины
-    по движению средств (включая funding, fees, rebates);
-  - audit-trail: для отчётности используется bills-archive (3 месяца).
+HFT usage:
+  - PnL reconciliation: bills are the only complete source of truth for
+    fund movements (including funding, fees, rebates);
+  - audit-trail: bills-archive (3 months) is used for reporting.
 */
 
 package types
 
 import "github.com/shopspring/decimal"
 
-// BillType — top-level тип записи bill (OKX type).
+// BillType — top-level bill record type (OKX type).
 type BillType string
 
-// Категории billType — синонимы числовых значений OKX (1..N).
-// Документация: https://www.okx.com/docs-v5/en/#trading-account-rest-api-get-bills-details-last-7-days
+// billType categories — aliases for OKX numeric values (1..N).
+// Documentation: https://www.okx.com/docs-v5/en/#trading-account-rest-api-get-bills-details-last-7-days
 const (
 	BillTypeTransfer        BillType = "1"
 	BillTypeTrade           BillType = "2"
@@ -55,42 +55,41 @@ const (
 	BillTypeFee             BillType = "27"
 )
 
-// Bill — запись журнала аккаунта.
+// Bill — account ledger entry.
 type Bill struct {
-	// BillID — уникальный id записи (billId).
+	// BillID — unique record id (billId).
 	BillID string
-	// Type — категория операции (type).
+	// Type — operation category (type).
 	Type BillType
-	// SubType — детализированный sub-type (subType), напр. funding/realized PnL.
+	// SubType — detailed sub-type (subType), e.g. funding/realized PnL.
 	SubType string
-	// Ccy — валюта операции (ccy).
+	// Ccy — operation currency (ccy).
 	Ccy string
-	// InstID — инструмент, к которому относится операция (если применимо).
+	// InstID — instrument associated with the operation (if applicable).
 	InstID string
-	// InstType — тип инструмента.
+	// InstType — instrument type.
 	InstType InstType
-	// MgnMode — режим маржи на момент операции (mgnMode).
+	// MgnMode — margin mode at the time of the operation (mgnMode).
 	MgnMode string
-	// BalChg — изменение баланса (balChg). Положительное = пришло,
-	// отрицательное = ушло.
+	// BalChg — balance change (balChg). Positive = received, negative = sent.
 	BalChg decimal.Decimal
-	// BalAfter — баланс после операции (bal).
+	// BalAfter — balance after the operation (bal).
 	BalAfter decimal.Decimal
-	// PnL — realized PnL по операции (pnl).
+	// PnL — realized PnL of the operation (pnl).
 	PnL decimal.Decimal
-	// Fee — комиссия (fee).
+	// Fee — commission (fee).
 	Fee decimal.Decimal
-	// Ts — таймштамп операции в мс (ts).
+	// Ts — operation timestamp in ms (ts).
 	Ts int64
-	// ExecType — для trade-bill: "T" taker / "M" maker.
+	// ExecType — for trade-bill: "T" taker / "M" maker.
 	ExecType string
-	// From — sub-account источник (для transfer).
+	// From — source sub-account (for transfer).
 	From string
-	// To — sub-account получатель (для transfer).
+	// To — destination sub-account (for transfer).
 	To string
-	// Notes — текстовый комментарий, если есть.
+	// Notes — text comment, if any.
 	Notes string
 }
 
-// Bills — слайс записей.
+// Bills — slice of records.
 type Bills []Bill

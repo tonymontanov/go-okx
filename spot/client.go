@@ -1,29 +1,28 @@
 /*
-ФАЙЛ: spot/client.go
+FILE: spot/client.go
 
-ОПИСАНИЕ:
-Корневой клиент SPOT-профиля. Зеркально swap/client.go: parent okx.Client,
-четыре саб-клиента, общие public/private WS-соединения, регистрация фабрики
-в init().
+DESCRIPTION:
+Root client for the SPOT profile. Mirrors swap/client.go: parent okx.Client,
+four sub-clients, shared public/private WS connections, factory registration in init().
 
-ОТЛИЧИЯ ОТ SWAP:
-  - Использует SPOT-специфичные эндпоинты и типы (spot/types).
-  - На WS используется тот же хост (public и private OKX v5 одни и те же
-    для всех instType).
-  - tdMode по умолчанию `cash`.
+DIFFERENCES FROM SWAP:
+  - Uses SPOT-specific endpoints and types (spot/types).
+  - The same WS host is used (OKX v5 public and private hosts are shared
+    across all instTypes).
+  - tdMode defaults to `cash`.
 
-ОСОБЕННОСТИ ID:
-  - clOrdId/tag — те же ограничения OKX [A-Za-z0-9]{1,32} / {1,16}.
-    Валидация — в spot/trading.go.
+ID CONSTRAINTS:
+  - clOrdId/tag — same OKX restrictions [A-Za-z0-9]{1,32} / {1,16}.
+    Validation is in spot/trading.go.
 
-ПОТОКОБЕЗОПАСНОСТЬ:
-  - Client потокобезопасен: саб-клиенты — read-only после конструирования.
-  - WS-соединения создаются лениво через sync.Once.
+THREAD SAFETY:
+  - Client is thread-safe: sub-clients are read-only after construction.
+  - WS connections are created lazily via sync.Once.
 
-УПОТРЕБЛЕНИЕ:
-  - Через корневой okx.Client:
+USAGE:
+  - Via the root okx.Client:
         var spotClient *spot.Client = okxClient.Spot().(*spot.Client)
-  - Напрямую (для тестов / тонкого контроля):
+  - Directly (for tests / fine-grained control):
         var spotClient *spot.Client = spot.NewClient(okxClient)
 */
 
@@ -36,7 +35,7 @@ import (
 	"github.com/tonymontanov/go-okx/v2/internal/ws"
 )
 
-// Client — клиент SPOT-профиля OKX.
+// Client — OKX SPOT profile client.
 type Client struct {
 	parent *okx.Client
 
@@ -51,7 +50,7 @@ type Client struct {
 	privateWs     *ws.Conn
 }
 
-// NewClient создаёт SPOT-клиент. Параметр parent обязателен.
+// NewClient creates a SPOT client. The parent parameter is required.
 func NewClient(parent *okx.Client) *Client {
 	if parent == nil {
 		return nil
@@ -64,19 +63,19 @@ func NewClient(parent *okx.Client) *Client {
 	return c
 }
 
-// Parent возвращает корневой okx.Client.
+// Parent returns the root okx.Client.
 func (c *Client) Parent() *okx.Client { return c.parent }
 
-// Trading возвращает саб-клиент торговли SPOT.
+// Trading returns the SPOT trading sub-client.
 func (c *Client) Trading() *TradingClient { return c.trading }
 
-// Account возвращает саб-клиент баланса SPOT.
+// Account returns the SPOT account/balance sub-client.
 func (c *Client) Account() *AccountClient { return c.account }
 
-// MarketData возвращает саб-клиент рыночных данных SPOT.
+// MarketData returns the SPOT market data sub-client.
 func (c *Client) MarketData() *MarketDataClient { return c.marketData }
 
-// Stream возвращает саб-клиент WS-подписок SPOT.
+// Stream returns the SPOT WS subscriptions sub-client.
 func (c *Client) Stream() *StreamClient { return c.stream }
 
 func (c *Client) logger() okx.Logger  { return c.parent.Logger() }
@@ -84,7 +83,7 @@ func (c *Client) rest() restDoer      { return c.parent.REST() }
 func (c *Client) config() okx.Config  { return c.parent.Config() }
 func (c *Client) signerEnabled() bool { return c.parent.Signer().Enabled() }
 
-// publicConn возвращает (лениво создавая) public WS-соединение.
+// publicConn returns the public WS connection, creating it lazily.
 func (c *Client) publicConn() *ws.Conn {
 	c.publicWsOnce.Do(func() {
 		var cfg okx.Config = c.parent.Config()
@@ -98,7 +97,7 @@ func (c *Client) publicConn() *ws.Conn {
 	return c.publicWs
 }
 
-// privateConn возвращает (лениво создавая) private WS-соединение.
+// privateConn returns the private WS connection, creating it lazily.
 func (c *Client) privateConn() *ws.Conn {
 	c.privateWsOnce.Do(func() {
 		var cfg okx.Config = c.parent.Config()
@@ -112,7 +111,7 @@ func (c *Client) privateConn() *ws.Conn {
 	return c.privateWs
 }
 
-// toWsConfig конвертирует публичный okx.WsConfig в локальный ws.Config.
+// toWsConfig converts the public okx.WsConfig to a local ws.Config.
 func toWsConfig(cfg okx.Config, url string, private bool) ws.Config {
 	return ws.Config{
 		URL:                     url,
@@ -129,13 +128,13 @@ func toWsConfig(cfg okx.Config, url string, private bool) ws.Config {
 	}
 }
 
-// init регистрирует фабрику в корневом пакете. Зеркально swap.init().
+// init registers the factory in the root package. Mirrors swap.init().
 //
-// Достаточно blank-import:
+// A blank-import is sufficient:
 //
 //	import _ "github.com/tonymontanov/go-okx/v2/spot"
 //
-// чтобы okx.Client.Spot() начал возвращать *spot.Client.
+// for okx.Client.Spot() to start returning *spot.Client.
 func init() {
 	okx.RegisterSpotFactory(func(parent *okx.Client) any {
 		return NewClient(parent)

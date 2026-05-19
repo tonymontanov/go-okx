@@ -1,45 +1,44 @@
 /*
-ФАЙЛ: swap/types/create-order-request.go
+FILE: swap/types/create-order-request.go
 
-ОПИСАНИЕ:
-Структура запроса на создание ордера в SWAP-секции OKX. Сделана максимально
-близкой к `connectors/types.CreateOrderRequest` деска, чтобы адаптер
-OKXSwapsConnector мог обходиться без потерь информации, но при этом
-расширена OKX-специфичными полями (TdMode, PosSide, Ccy).
+DESCRIPTION:
+Order creation request struct for the OKX SWAP section. Kept as close as
+possible to the desk's `connectors/types.CreateOrderRequest` so that the
+OKXSwapsConnector adapter works without data loss, but extended with OKX-specific
+fields (TdMode, PosSide, Ccy).
 
-ПОЛЯ:
-  - InstID         — инструмент в формате OKX (например, "BTC-USDT-SWAP").
+FIELDS:
+  - InstID         — instrument in OKX format (e.g. "BTC-USDT-SWAP").
   - Side           — buy/sell.
-  - OrderType      — limit/market/post_only/fok/ioc. Если задан явный OrderType,
-                     поле TimeInForce ИГНОРИРУЕТСЯ. Это сделано чтобы адаптер
-                     из core (где есть только TIF) и нативные пользователи SDK
-                     (где есть OrderType) одинаково корректно работали.
-  - TimeInForce    — TIF в нотации core/Binance (GTC/IOC/FOK/GTX). Конвертируется
-                     в OrderType, если OrderType пуст.
-  - Size           — количество в контрактах (lotSize). decimal.Decimal для
-                     точности; при сборке запроса конвертируется в строку без
-                     потерь.
-  - Price          — цена (для limit/post_only/fok/ioc). Для market не нужна.
-  - ClientOrderID  — клиентский id (1..32 символа [A-Za-z0-9], только буквы и
-                     цифры; биржа отклонит подчёркивания/дефисы/точки кодом 51000).
-  - ReduceOnly     — флаг ReduceOnly. Включается также автоматически в OptimalLimitIOC.
-  - TdMode         — margin-mode. Если пустой — выводится автоматически (cross
-                     для обычного ордера; см. ResolveTdMode в swap/client).
-  - PosSide        — сторона позиции. Пустой → "net" в net-mode (default).
-  - Ccy            — валюта маржи для cross/isolated. Пустая → выводится из инструмента.
-  - Tag            — broker tag (опционально, для OKX broker program).
+  - OrderType      — limit/market/post_only/fok/ioc. If an explicit OrderType is
+                     set, the TimeInForce field is IGNORED. This allows the core
+                     adapter (which only has TIF) and native SDK users (which have
+                     OrderType) to work correctly with the same struct.
+  - TimeInForce    — TIF in core/Binance notation (GTC/IOC/FOK/GTX). Converted to
+                     OrderType if OrderType is empty.
+  - Size           — quantity in contracts (lotSize). decimal.Decimal for precision;
+                     converted to a lossless string when building the request.
+  - Price          — price (for limit/post_only/fok/ioc). Not needed for market.
+  - ClientOrderID  — client id (1..32 chars [A-Za-z0-9], letters and digits only;
+                     the exchange rejects underscores/hyphens/dots with code 51000).
+  - ReduceOnly     — ReduceOnly flag. Also enabled automatically for OptimalLimitIOC.
+  - TdMode         — margin mode. If empty — derived automatically (cross for a
+                     regular order; see ResolveTdMode in swap/client).
+  - PosSide        — position side. Empty → "net" in net-mode (default).
+  - Ccy            — margin currency for cross/isolated. Empty → derived from instrument.
+  - Tag            — broker tag (optional, for the OKX broker programme).
 
-ИНВАРИАНТЫ:
-  - При OrderType=="market" поле Price игнорируется при сборке запроса.
-  - При OrderType=="post_only" сервер отклонит ордер, который немедленно исполнится
-    как taker; SDK эту проверку не дублирует.
+INVARIANTS:
+  - For OrderType=="market" the Price field is ignored when building the request.
+  - For OrderType=="post_only" the server will reject an order that would immediately
+    fill as a taker; the SDK does not duplicate this check.
 */
 
 package types
 
 import "github.com/shopspring/decimal"
 
-// CreateOrderRequest — запрос на создание ордера SWAP.
+// CreateOrderRequest — SWAP order creation request.
 type CreateOrderRequest struct {
 	InstID        string
 	Side          SideType

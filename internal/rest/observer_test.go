@@ -1,17 +1,17 @@
 /*
-ФАЙЛ: internal/rest/observer_test.go
+FILE: internal/rest/observer_test.go
 
-ОПИСАНИЕ:
-Unit-тесты публичного контракта RateLimitObserver (см. okx.Config.RateLimitObserver
-и rest.Config.RateLimitObserver). Тесты крутят httptest.Server вместо реального
-api.okx.com — это даёт нам полный контроль над ответами и заголовками без сети.
+DESCRIPTION:
+Unit tests for the public RateLimitObserver contract (see okx.Config.RateLimitObserver
+and rest.Config.RateLimitObserver). Tests use httptest.Server instead of the real
+api.okx.com — giving full control over responses and headers without network access.
 
-Покрытие:
-  - Observer вызывается ровно один раз на REST-вызов;
-  - получает правильный endpoint (opts.Path без query);
-  - получает фактические rate-limit заголовки (lowercase и x- варианты);
-  - получает non-nil map даже если сервер не вернул ни одного заголовка;
-  - nil-observer безопасен и не приводит к panic'у.
+Coverage:
+  - Observer is called exactly once per REST call;
+  - receives the correct endpoint (opts.Path without query);
+  - receives actual rate-limit headers (lowercase and x- variants);
+  - receives a non-nil map even when the server returned no headers;
+  - nil-observer is safe and does not cause a panic.
 */
 
 package rest
@@ -27,9 +27,9 @@ import (
 	"github.com/tonymontanov/go-okx/v2/internal/okxlog"
 )
 
-// newObserverTestClient — конструктор rest.Client с указанным observer'ом,
-// без подписи. Имя отличается от newTestClient (client_test.go), чтобы
-// тесты в одном пакете не конфликтовали.
+// newObserverTestClient — rest.Client constructor with the given observer,
+// no signing. Name differs from newTestClient (client_test.go) to avoid
+// conflicts between tests in the same package.
 func newObserverTestClient(t *testing.T, srv *httptest.Server, observer func(string, map[string]string)) *Client {
 	t.Helper()
 	return NewClient(
@@ -84,9 +84,9 @@ func TestRateLimitObserver_CalledWithEndpointAndHeaders(t *testing.T) {
 	}
 }
 
-// TestRateLimitObserver_CalledOnHTTPError — observer должен сработать и при
-// 4xx/5xx ответах: rate-limit информация на ошибках особенно важна, чтобы
-// стратегия rate-limiter'а могла отступить.
+// TestRateLimitObserver_CalledOnHTTPError — observer must fire even on 4xx/5xx
+// responses: rate-limit information on errors is especially important so that
+// the rate-limiter strategy can back off.
 func TestRateLimitObserver_CalledOnHTTPError(t *testing.T) {
 	var srv *httptest.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("ratelimit-remaining", "0")
@@ -104,7 +104,7 @@ func TestRateLimitObserver_CalledOnHTTPError(t *testing.T) {
 	}
 
 	var c *Client = newObserverTestClient(t, srv, observer)
-	// Ошибка ожидаема — но observer обязан быть вызван до этого.
+	// Error is expected — but observer must be called before it.
 	_, _, _ = c.Do(context.Background(), Options{Method: "POST", Path: "/api/v5/trade/order"})
 
 	if got := atomic.LoadInt32(&calls); got != 1 {
@@ -115,9 +115,9 @@ func TestRateLimitObserver_CalledOnHTTPError(t *testing.T) {
 	}
 }
 
-// TestRateLimitObserver_NonNilMapWhenNoHeaders — контракт публичного docstring'а:
-// headers всегда non-nil, даже если сервер не вернул ни одного rate-limit
-// заголовка (например, для unauthenticated public endpoint'ов).
+// TestRateLimitObserver_NonNilMapWhenNoHeaders — public docstring contract:
+// headers are always non-nil even if the server returned no rate-limit
+// headers (e.g. for unauthenticated public endpoints).
 func TestRateLimitObserver_NonNilMapWhenNoHeaders(t *testing.T) {
 	var srv *httptest.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -150,10 +150,9 @@ func TestRateLimitObserver_NonNilMapWhenNoHeaders(t *testing.T) {
 	}
 }
 
-// TestRateLimitObserver_NilSafe — отсутствие observer'а (default config) не
-// должно приводить к panic'у. Это базовая гарантия обратной совместимости с
-// v2.0.x: пользователи, которые не выставляют RateLimitObserver, продолжают
-// работать без изменений.
+// TestRateLimitObserver_NilSafe — absence of an observer (default config) must
+// not cause a panic. This is the basic backwards-compatibility guarantee with
+// v2.0.x: users who do not set RateLimitObserver continue to work unchanged.
 func TestRateLimitObserver_NilSafe(t *testing.T) {
 	var srv *httptest.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)

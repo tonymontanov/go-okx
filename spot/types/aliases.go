@@ -1,28 +1,27 @@
 /*
-ФАЙЛ: spot/types/aliases.go
+FILE: spot/types/aliases.go
 
-ОПИСАНИЕ:
-Type-алиасы протокольно-общих типов OKX v5 для SPOT-профиля. Все эти типы
-лежат в нейтральном пакете github.com/tonymontanov/go-okx/v2/types и
-переиспользуются обоими профилями (spot и swap) без перекрёстных зависимостей.
+DESCRIPTION:
+Type aliases for protocol-shared OKX v5 types in the SPOT profile. All these
+types reside in the neutral package github.com/tonymontanov/go-okx/v2/types and
+are reused by both profiles (spot and swap) without cross-dependencies.
 
-ПОЧЕМУ ЗАВИСИМОСТЬ НА github.com/tonymontanov/go-okx/v2/types, А НЕ НА swap/types:
-Раньше spot/types был алиасом на swap/types — это создавало логически
-некорректную зависимость spot → swap (профили равноправны и не должны знать
-друг о друге). Общий слой устраняет проблему: и spot, и swap зависят только
-от types, и оба могут существовать независимо.
+WHY DEPEND ON github.com/tonymontanov/go-okx/v2/types AND NOT swap/types:
+Previously spot/types aliased swap/types — this created a logically incorrect
+spot → swap dependency (profiles are peers and must not know about each other).
+The common layer eliminates the problem: both spot and swap depend only on types
+and can exist independently.
 
-ПОЧЕМУ АЛИАСЫ, А НЕ ОТДЕЛЬНЫЕ ТИПЫ:
-  - `type X = commontypes.X` — это полностью идентичный тип на уровне Go
-    (не «новый named type»). spot.CreateOrderRequest{Side: types.SideTypeBuy}
-    компилируется без приведений, даже если internal где-то ожидает
-    common-версии того же типа.
-  - Один источник истины: при изменении/добавлении значений (новый OrderType
-    у OKX) правится в одном месте — types/enums.go.
-  - Нулевой runtime-cost: алиасы не создают новых typed-значений в бинаре.
+WHY ALIASES RATHER THAN SEPARATE TYPES:
+  - `type X = commontypes.X` is a fully identical type at the Go level
+    (not a "new named type"). spot.CreateOrderRequest{Side: types.SideTypeBuy}
+    compiles without casts, even if internal code expects the common version.
+  - Single source of truth: when values are changed/added (a new OKX OrderType),
+    only types/enums.go needs updating.
+  - Zero runtime cost: aliases do not create new typed values in the binary.
 
-SPOT-СПЕЦИФИЧНЫЕ ТИПЫ — в отдельных файлах этого пакета (create-order-request.go,
-order-info.go, symbol-info.go и т. д.).
+SPOT-SPECIFIC TYPES are in separate files of this package (create-order-request.go,
+order-info.go, symbol-info.go, etc.).
 */
 
 package types
@@ -31,7 +30,7 @@ import (
 	commontypes "github.com/tonymontanov/go-okx/v2/types"
 )
 
-// SideType — направление ордера (buy/sell). См. commontypes.SideType.
+// SideType — order direction (buy/sell). See commontypes.SideType.
 type SideType = commontypes.SideType
 
 const (
@@ -39,9 +38,9 @@ const (
 	SideTypeSell = commontypes.SideTypeSell
 )
 
-// OrderType — тип ордера в нотации OKX. См. commontypes.OrderType.
-// Для SPOT применимы: market, limit, post_only, fok, ioc.
-// OrderTypeOptimalLimitIOC — SWAP-only константа, в spot/types её нет.
+// OrderType — OKX order type. See commontypes.OrderType.
+// Applicable for SPOT: market, limit, post_only, fok, ioc.
+// OrderTypeOptimalLimitIOC is a SWAP-only constant and is absent from spot/types.
 type OrderType = commontypes.OrderType
 
 const (
@@ -52,7 +51,7 @@ const (
 	OrderTypeIOC      = commontypes.OrderTypeIOC
 )
 
-// TimeInForceType — TIF (Binance-style). См. commontypes.TimeInForceType.
+// TimeInForceType — TIF (Binance-style). See commontypes.TimeInForceType.
 type TimeInForceType = commontypes.TimeInForceType
 
 const (
@@ -62,10 +61,10 @@ const (
 	TimeInForceTypeGTX = commontypes.TimeInForceTypeGTX
 )
 
-// TdMode — margin-mode ордера. См. commontypes.TdMode.
-// Для SPOT обычно используется TdModeCash (без плеча). TdModeCross/Isolated
-// доступны для spot margin trading, но в текущей версии SDK не используются
-// (см. doc.go).
+// TdMode — order margin mode. See commontypes.TdMode.
+// For SPOT, TdModeCash (no leverage) is typically used. TdModeCross/Isolated
+// are available for spot margin trading but are not used in the current SDK
+// version (see doc.go).
 type TdMode = commontypes.TdMode
 
 const (
@@ -74,7 +73,7 @@ const (
 	TdModeCash     = commontypes.TdModeCash
 )
 
-// InstType — тип инструмента OKX. SPOT-профиль всегда отдаёт InstTypeSpot.
+// InstType — OKX instrument type. The SPOT profile always returns InstTypeSpot.
 type InstType = commontypes.InstType
 
 const (
@@ -84,7 +83,7 @@ const (
 	InstTypeOption  = commontypes.InstTypeOption
 )
 
-// OrderState — статус ордера. См. commontypes.OrderState.
+// OrderState — order status. See commontypes.OrderState.
 type OrderState = commontypes.OrderState
 
 const (
@@ -95,40 +94,40 @@ const (
 	OrderStateUnknown         = commontypes.OrderStateUnknown
 )
 
-// ParseOrderState — реэкспорт.
+// ParseOrderState — re-export.
 var ParseOrderState = commontypes.ParseOrderState
 
-// CancelAllAfterResult — ответ POST /api/v5/trade/cancel-all-after.
-// См. commontypes.CancelAllAfterResult и types/cancel-all-after.go.
+// CancelAllAfterResult — response from POST /api/v5/trade/cancel-all-after.
+// See commontypes.CancelAllAfterResult and types/cancel-all-after.go.
 type CancelAllAfterResult = commontypes.CancelAllAfterResult
 
-// Fill — одно исполнение ордера. См. commontypes.Fill и types/fill.go.
+// Fill — a single order execution. See commontypes.Fill and types/fill.go.
 type Fill = commontypes.Fill
 
-// FillsQuery — параметры выборки fills (REST). См. commontypes.FillsQuery.
+// FillsQuery — parameters for fills retrieval (REST). See commontypes.FillsQuery.
 type FillsQuery = commontypes.FillsQuery
 
-// Общие модели данных — orderbook level/snapshot, candles, agg trades.
-// Формат идентичен для spot и swap (REST/WS endpoints общие), поэтому
-// переиспользуем через алиасы на общий пакет.
+// Shared data models — orderbook level/snapshot, candles, agg trades.
+// Format is identical for spot and swap (REST/WS endpoints are shared), so
+// we reuse via aliases from the common package.
 
-// OrderBookLevel — уровень стакана.
+// OrderBookLevel — order book level.
 type OrderBookLevel = commontypes.OrderBookLevel
 
-// OrderBookSnapshot — снимок стакана.
+// OrderBookSnapshot — order book snapshot.
 type OrderBookSnapshot = commontypes.OrderBookSnapshot
 
-// Candle — одна свеча.
+// Candle — a single candle.
 type Candle = commontypes.Candle
 
-// Candles — слайс свечей.
+// Candles — candle slice.
 type Candles = commontypes.Candles
 
-// Timeframe — таймфрейм запроса свечей.
+// Timeframe — candle request timeframe.
 type Timeframe = commontypes.Timeframe
 
-// Реэкспорт констант Timeframe — чтобы пользователь spot мог писать
-// types.Timeframe1m без отдельного импорта общего пакета.
+// Re-export of Timeframe constants — so a spot user can write
+// types.Timeframe1m without a separate import of the common package.
 const (
 	Timeframe1s  = commontypes.Timeframe1s
 	Timeframe15s = commontypes.Timeframe15s
@@ -149,15 +148,15 @@ const (
 	Timeframe1Mo = commontypes.Timeframe1Mo
 )
 
-// AggTrade — агрегированная сделка из WS канала trades.
+// AggTrade — aggregated trade from the WS trades channel.
 type AggTrade = commontypes.AggTrade
 
-// QuotedSpreadUpdate — BBO из канала bbo-tbt.
+// QuotedSpreadUpdate — BBO from the bbo-tbt channel.
 type QuotedSpreadUpdate = commontypes.QuotedSpreadUpdate
 
-// Balance — состояние unified-account (общее для spot и swap; OKX отдаёт
-// один баланс на пользователя).
+// Balance — unified-account state (shared between spot and swap; OKX returns
+// a single balance per user).
 type Balance = commontypes.Balance
 
-// BalanceDetail — баланс одной валюты внутри unified-account.
+// BalanceDetail — balance of a single currency within the unified-account.
 type BalanceDetail = commontypes.BalanceDetail

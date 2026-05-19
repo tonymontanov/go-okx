@@ -1,93 +1,92 @@
 /*
-ФАЙЛ: types/balance.go
+FILE: types/balance.go
 
-ОПИСАНИЕ:
-Доменная модель ответа GET /api/v5/account/balance.
+DESCRIPTION:
+Domain model for the GET /api/v5/account/balance response.
 
-OKX отдаёт один «account-summary» объект на запрос (даже массивом из одного
-элемента — это просто формат REST). Внутри лежит per-currency массив `details`,
-с балансом и маржой в каждой валюте.
+OKX returns one "account-summary" object per request (even as a single-element
+array — that is just the REST format). Inside is a per-currency array `details`
+with the balance and margin for each currency.
 
-UNIFIED-ACCOUNT: OKX использует ОДИН аккаунт на пользователя — spot и swap
-балансы возвращаются одним и тем же endpoint'ом. Поэтому модель Balance
-ЕДИНА для обоих профилей; здесь, в общем пакете, её естественное место.
+UNIFIED-ACCOUNT: OKX uses ONE account per user — spot and swap balances are
+returned by the same endpoint. Therefore the Balance model is SHARED between
+both profiles; here, in the common package, is its natural home.
 
-Какие поля стороны (HFT-core) ждут от баланса:
-  - Top-level: TotalEquityUSD, AdjustedEquityUSD (effective equity для маржи
-    cross-режима), IsolatedEquityUSD, MarginRatio, NotionalUSD.
-  - Per-currency: AvailableEquity (для cross-маржи и расчёта sizing), Equity,
+Fields expected by the HFT core side:
+  - Top-level: TotalEquityUSD, AdjustedEquityUSD (effective equity for cross-margin
+    mode), IsolatedEquityUSD, MarginRatio, NotionalUSD.
+  - Per-currency: AvailableEquity (for cross-margin and sizing calculations), Equity,
     CashBalance, FrozenBalance, OrderFrozen, UnrealizedPnL.
 
-ВНИМАНИЕ к деноминации:
-  - totalEq / adjEq / isoEq — в USD (равноценный USD у unified-account).
-  - eq / cashBal / availEq / availBal — В ВАЛЮТЕ ccy (USDT, BTC, ...).
-  - eqUsd — пересчёт ccy-equity в USD (для удобства агрегаций).
-  - mgnRatio: «безопасное» значение OKX обычно > 1; чем меньше, тем ближе к
-    ликвидации (см. OKX docs Margin ratio).
+NOTE ON DENOMINATION:
+  - totalEq / adjEq / isoEq — in USD (USD-equivalent for unified-account).
+  - eq / cashBal / availEq / availBal — IN ccy currency (USDT, BTC, ...).
+  - eqUsd — ccy-equity converted to USD (for aggregation convenience).
+  - mgnRatio: OKX considers values > 1 safe; the lower it is, the closer to
+    liquidation (see OKX docs Margin ratio).
 */
 
 package types
 
 import "github.com/shopspring/decimal"
 
-// Balance — состояние unified-account целиком (топ-уровень + per-currency).
+// Balance — full unified-account state (top-level + per-currency).
 type Balance struct {
-	// TotalEquityUSD — суммарный equity аккаунта в USD (totalEq).
+	// TotalEquityUSD — total account equity in USD (totalEq).
 	TotalEquityUSD decimal.Decimal
-	// AdjustedEquityUSD — effective/adjusted equity, использованный OKX как
-	// числитель margin ratio (adjEq). Для cross-аккаунта это «реальная»
-	// маржа с учётом дисконтов на инструменты.
+	// AdjustedEquityUSD — effective/adjusted equity used by OKX as the
+	// numerator of the margin ratio (adjEq). For a cross account this is the
+	// "real" margin including instrument-level discounts.
 	AdjustedEquityUSD decimal.Decimal
-	// IsolatedEquityUSD — equity, заблокированный в isolated-маржинальных
-	// позициях (isoEq).
+	// IsolatedEquityUSD — equity locked in isolated-margin positions (isoEq).
 	IsolatedEquityUSD decimal.Decimal
-	// OrderFrozenUSD — маржа, замороженная под pending cross-ордера (ordFroz).
+	// OrderFrozenUSD — margin frozen for pending cross orders (ordFroz).
 	OrderFrozenUSD decimal.Decimal
-	// InitialMarginUSD — initial margin requirement по аккаунту (imr).
+	// InitialMarginUSD — account-level initial margin requirement (imr).
 	InitialMarginUSD decimal.Decimal
-	// MaintenanceMarginUSD — maintenance margin requirement по аккаунту (mmr).
+	// MaintenanceMarginUSD — account-level maintenance margin requirement (mmr).
 	MaintenanceMarginUSD decimal.Decimal
-	// MarginRatio — margin ratio аккаунта (mgnRatio). У OKX это
-	// adjEq / mmr; >1 безопасно, <1 — близко к ликвидации.
+	// MarginRatio — account margin ratio (mgnRatio). OKX computes this as
+	// adjEq / mmr; >1 is safe, <1 is close to liquidation.
 	MarginRatio decimal.Decimal
-	// NotionalUSD — суммарная номинальная стоимость открытых позиций в USD.
+	// NotionalUSD — total notional value of open positions in USD.
 	NotionalUSD decimal.Decimal
-	// UpdatedAtMs — таймштамп последнего обновления (uTime).
+	// UpdatedAtMs — last update timestamp (uTime).
 	UpdatedAtMs int64
-	// Details — балансы по каждой валюте.
+	// Details — per-currency balances.
 	Details []BalanceDetail
 }
 
-// BalanceDetail — баланс и маржа для одной валюты внутри unified-account.
+// BalanceDetail — balance and margin for one currency within the unified-account.
 type BalanceDetail struct {
-	// Ccy — тикер валюты (USDT, BTC, ETH, ...).
+	// Ccy — currency ticker (USDT, BTC, ETH, ...).
 	Ccy string
-	// Equity — equity в этой валюте (eq).
+	// Equity — equity in this currency (eq).
 	Equity decimal.Decimal
-	// CashBalance — кеш-баланс (cashBal). Чистый «положили на счёт минус
-	// сняли», без учёта UPL.
+	// CashBalance — cash balance (cashBal). Net of deposits minus withdrawals,
+	// excluding UPL.
 	CashBalance decimal.Decimal
-	// AvailableEquity — доступная маржа в этой валюте для открытия позиций
-	// в cross-режиме (availEq). Базовый показатель для расчёта sizing.
+	// AvailableEquity — available margin in this currency for opening positions
+	// in cross mode (availEq). Primary metric for sizing calculations.
 	AvailableEquity decimal.Decimal
-	// AvailableBalance — баланс, доступный к выводу (availBal). НЕ совпадает
-	// с AvailableEquity: учитывает только cash, не UPL.
+	// AvailableBalance — balance available for withdrawal (availBal). NOT equal
+	// to AvailableEquity: considers only cash, not UPL.
 	AvailableBalance decimal.Decimal
-	// FrozenBalance — общий замороженный баланс (frozenBal).
+	// FrozenBalance — total frozen balance (frozenBal).
 	FrozenBalance decimal.Decimal
-	// OrderFrozen — баланс, замороженный под открытые ордера (ordFrozen).
+	// OrderFrozen — balance frozen for open orders (ordFrozen).
 	OrderFrozen decimal.Decimal
-	// UnrealizedPnL — нереализованный PnL по позициям в этой валюте (upl).
+	// UnrealizedPnL — unrealized PnL on positions in this currency (upl).
 	UnrealizedPnL decimal.Decimal
-	// IsolatedUnrealizedPnL — UPL только по isolated-позициям (isoUpl).
+	// IsolatedUnrealizedPnL — UPL from isolated positions only (isoUpl).
 	IsolatedUnrealizedPnL decimal.Decimal
-	// DiscountEquity — equity с применённым OKX-дисконтом, используется как
-	// маржа в multi-currency сценариях (disEq).
+	// DiscountEquity — equity with OKX discount applied, used as margin in
+	// multi-currency scenarios (disEq).
 	DiscountEquity decimal.Decimal
-	// EquityUSD — equity, переведённый в USD по марк-цене (eqUsd).
+	// EquityUSD — equity converted to USD at mark price (eqUsd).
 	EquityUSD decimal.Decimal
-	// MarginRatio — margin ratio именно для этой валюты (mgnRatio).
+	// MarginRatio — margin ratio for this specific currency (mgnRatio).
 	MarginRatio decimal.Decimal
-	// UpdatedAtMs — таймштамп последнего обновления per-currency (uTime).
+	// UpdatedAtMs — per-currency last update timestamp (uTime).
 	UpdatedAtMs int64
 }

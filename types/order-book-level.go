@@ -1,32 +1,32 @@
 /*
-ФАЙЛ: types/order-book-level.go
+FILE: types/order-book-level.go
 
-ОПИСАНИЕ:
-Уровень стакана (одна точка глубины: цена + объём). Используется в:
+DESCRIPTION:
+A single order book level (one depth point: price + size). Used in:
   - REST snapshot (GetOrderBook);
   - orderbook engine (snapshot + delta);
-  - WS push (Watch* функции).
+  - WS push (Watch* functions).
 
-Формат уровня одинаков для spot и swap у OKX v5 (отличается только единица
-измерения size: spot = base currency, swap = контракты — это уже забота
-адаптера, не уровня структуры).
+The level format is identical for spot and swap in OKX v5 (only the unit
+of size differs: spot = base currency, swap = contracts — that is the
+adapter's concern, not the struct's).
 
-ПОЛЯ:
-  - Price — цена уровня. decimal.Decimal — без потерь и сравним без epsilon-trick.
-  - Size  — объём на этом уровне (base ccy для spot / контракты для swap).
+FIELDS:
+  - Price — level price. decimal.Decimal — lossless and comparable without epsilon tricks.
+  - Size  — volume at this level (base ccy for spot / contracts for swap).
 
-ПРИМЕЧАНИЕ:
-Поле `Orders` (число ордеров на уровне), которое OKX отдаёт в массиве, мы
-сознательно ОПУСКАЕМ в публичной структуре — оно почти никем не используется
-в реальной торговле, но удваивает размер структуры. При необходимости вернётся
-отдельным расширенным типом OrderBookLevelDetailed.
+NOTE:
+The `Orders` field (number of orders at the level) that OKX includes in the array
+is intentionally OMITTED from the public struct — it is rarely used
+in actual trading but doubles the struct size. It will be added in a separate
+extended type OrderBookLevelDetailed if needed.
 */
 
 package types
 
 import "github.com/shopspring/decimal"
 
-// OrderBookLevel — один уровень стакана.
+// OrderBookLevel — one order book level.
 type OrderBookLevel struct {
 	Price decimal.Decimal
 	Size  decimal.Decimal

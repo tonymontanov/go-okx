@@ -1,43 +1,43 @@
 /*
-ФАЙЛ: spot/types/symbol-info.go
+FILE: spot/types/symbol-info.go
 
-ОПИСАНИЕ:
-Спецификация SPOT-инструмента. Отличия от SWAP:
-  - НЕТ CtVal/CtMult (на споте ордер измеряется в базовой валюте напрямую,
-    нет понятия "контракт").
-  - НЕТ MaxMarketSize (OKX для спота возвращает только MaxLmtSz / MaxLmtAmt
-    для лимитных и max market amount/size — мы храним их явно).
-  - ЕСТЬ MinSize в базовой валюте.
+DESCRIPTION:
+SPOT instrument specification. Differences from SWAP:
+  - NO CtVal/CtMult (on spot an order is measured directly in the base currency;
+    the concept of "contract" does not exist).
+  - NO MaxMarketSize (for spot OKX returns only MaxLmtSz / MaxLmtAmt for limit
+    orders and max market amount/size — stored explicitly).
+  - MinSize IS present, in base currency.
 
-Источник: GET /api/v5/public/instruments?instType=SPOT.
+Source: GET /api/v5/public/instruments?instType=SPOT.
 */
 
 package types
 
 import "github.com/shopspring/decimal"
 
-// SymbolInfo — спецификация SPOT-инструмента.
+// SymbolInfo — SPOT instrument specification.
 type SymbolInfo struct {
-	// InstID — id инструмента, "BTC-USDT".
+	// InstID — instrument id, "BTC-USDT".
 	InstID string
-	// BaseCcy — базовая валюта ("BTC").
+	// BaseCcy — base currency ("BTC").
 	BaseCcy string
-	// QuoteCcy — котировочная валюта ("USDT").
+	// QuoteCcy — quote currency ("USDT").
 	QuoteCcy string
-	// TickSize — минимальный шаг цены (например 0.1).
+	// TickSize — minimum price increment (e.g. 0.1).
 	TickSize decimal.Decimal
-	// LotSize — минимальный шаг количества (минимальный инкремент sz, в base).
+	// LotSize — minimum quantity increment (minimum sz increment, in base).
 	LotSize decimal.Decimal
-	// MinSize — минимальный размер ордера в базовой валюте.
+	// MinSize — minimum order size in base currency.
 	MinSize decimal.Decimal
-	// MaxLimitSize — максимальный размер для limit-ордера в базовой валюте.
+	// MaxLimitSize — maximum size for a limit order in base currency.
 	MaxLimitSize decimal.Decimal
-	// MaxMarketSize — максимальный размер для market-ордера в базовой валюте
-	// (поле maxMktSz, для market BUY с tgtCcy=quote_ccy — лимит будет в
-	// quote-валюте, см. OKX docs).
+	// MaxMarketSize — maximum size for a market order in base currency
+	// (field maxMktSz; for market BUY with tgtCcy=quote_ccy the limit
+	// is in quote currency — see OKX docs).
 	MaxMarketSize decimal.Decimal
-	// PricePrecision — количество знаков после запятой в TickSize.
+	// PricePrecision — number of decimal places in TickSize.
 	PricePrecision int32
-	// QuantityPrecision — количество знаков после запятой в LotSize.
+	// QuantityPrecision — number of decimal places in LotSize.
 	QuantityPrecision int32
 }

@@ -1,16 +1,16 @@
 /*
-ФАЙЛ: examples/market-data/main.go
+FILE: examples/market-data/main.go
 
-ОПИСАНИЕ:
-Read-only public REST: спецификация инструмента, снапшот стакана, исторические
-свечи. Ключи и .env НЕ требуются.
+DESCRIPTION:
+Read-only public REST: instrument specification, order book snapshot, historical
+candles. Keys and .env are NOT required.
 
-ПОКРЫТИЕ:
+COVERAGE:
   - swap.MarketData().GetSymbolInfo
   - swap.MarketData().GetOrderBook (snapshot)
-  - swap.MarketData().GetHistoricalCandles (1m, последние 5)
+  - swap.MarketData().GetHistoricalCandles (1m, last 5)
 
-ЗАПУСК:
+RUN:
     go run ./examples/market-data
 */
 
@@ -52,13 +52,13 @@ func main() {
 
 	fmt.Printf("=== Market data for %s ===\n\n", instID)
 
-	// 1. Спецификация инструмента.
+	// 1. Instrument specification.
 	dumpSymbolInfo(ctx, swap, instID)
 
-	// 2. Снапшот стакана.
+	// 2. Order book snapshot.
 	dumpOrderBook(ctx, swap, instID, 5)
 
-	// 3. Свечи 1m, последние 5.
+	// 3. 1m candles, last 5.
 	dumpCandles(ctx, swap, instID, types.Timeframe1m, 5)
 }
 

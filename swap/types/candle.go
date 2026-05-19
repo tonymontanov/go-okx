@@ -1,19 +1,20 @@
 /*
-ФАЙЛ: swap/types/candle.go
+FILE: swap/types/candle.go
 
-ОПИСАНИЕ:
-Структуры исторической свечи SWAP-профиля. С момента выделения общего слоя
-— type-alias на commontypes.Candle/Candles. Документация — в types/candle.go.
+DESCRIPTION:
+Historical candle structs for the SWAP profile. Since the common layer was
+extracted — a type alias for commontypes.Candle/Candles. Documentation is
+in types/candle.go.
 
-ЕДИНИЦА Volume для SWAP — контракты (умножать на ctVal для приведения в base).
+Volume unit for SWAP — contracts (multiply by ctVal to convert to base).
 */
 
 package types
 
 import commontypes "github.com/tonymontanov/go-okx/v2/types"
 
-// Candle — одна свеча. См. commontypes.Candle.
+// Candle — one candle. See commontypes.Candle.
 type Candle = commontypes.Candle
 
-// Candles — слайс свечей. См. commontypes.Candles.
+// Candles — slice of candles. See commontypes.Candles.
 type Candles = commontypes.Candles

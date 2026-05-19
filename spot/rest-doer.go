@@ -1,10 +1,10 @@
 /*
-ФАЙЛ: spot/rest-doer.go
+FILE: spot/rest-doer.go
 
-ОПИСАНИЕ:
-Минимальный интерфейс REST-транспорта для саб-клиентов SPOT. Зеркало
-swap/rest-doer.go — тот же контракт, что у internal/rest.Client.Do.
-Используется для тестируемости (подмена fake-rest в unit-тестах).
+DESCRIPTION:
+Minimal REST transport interface for SPOT sub-clients. Mirrors swap/rest-doer.go —
+the same contract as internal/rest.Client.Do. Used for testability (injecting
+a fake REST transport in unit tests).
 */
 
 package spot
@@ -15,7 +15,7 @@ import (
 	"github.com/tonymontanov/go-okx/v2/internal/rest"
 )
 
-// restDoer — минимальный контракт REST-транспорта.
+// restDoer — minimal REST transport contract.
 type restDoer interface {
 	Do(ctx context.Context, opts rest.Options) (rest.Response, map[string]string, error)
 }

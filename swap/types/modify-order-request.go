@@ -1,29 +1,29 @@
 /*
-ФАЙЛ: swap/types/modify-order-request.go
+FILE: swap/types/modify-order-request.go
 
-ОПИСАНИЕ:
-Структура запроса на модификацию (amend) ордера SWAP. OKX amend-order
-поддерживает изменение только newSz/newPx; side/type/tif не модифицируются —
-если нужно изменить их, ордер придётся отменить и создать заново.
+DESCRIPTION:
+SWAP order modification (amend) request struct. OKX amend-order only supports
+changing newSz/newPx; side/type/tif cannot be modified — if those need to
+change, the order must be cancelled and recreated.
 
-ПОЛЯ:
-  - InstID        — инструмент.
-  - OrderID       — биржевой id ордера (ordId). Заполняется ЛИБО он, ЛИБО ClientOrderID.
-  - ClientOrderID — клиентский id (clOrdId).
-  - NewSize       — новый размер (опционально).
-  - NewPrice      — новая цена (опционально).
-  - RequestID     — req-id для идемпотентности на стороне OKX (опционально).
+FIELDS:
+  - InstID        — instrument.
+  - OrderID       — exchange order id (ordId). Either this OR ClientOrderID must be set.
+  - ClientOrderID — client order id (clOrdId).
+  - NewSize       — new size (optional).
+  - NewPrice      — new price (optional).
+  - RequestID     — req-id for OKX-side idempotency (optional).
 
-ИНВАРИАНТЫ:
-  - Должен быть задан ровно один идентификатор: OrderID или ClientOrderID.
-  - Должно быть задано хотя бы одно из NewSize/NewPrice; иначе OKX вернёт ошибку.
+INVARIANTS:
+  - Exactly one identifier must be set: OrderID or ClientOrderID.
+  - At least one of NewSize/NewPrice must be set; otherwise OKX returns an error.
 */
 
 package types
 
 import "github.com/shopspring/decimal"
 
-// ModifyOrderRequest — запрос на amend ордера SWAP.
+// ModifyOrderRequest — SWAP order amend request.
 type ModifyOrderRequest struct {
 	InstID        string
 	OrderID       string

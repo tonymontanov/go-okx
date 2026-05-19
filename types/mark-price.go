@@ -1,36 +1,36 @@
 /*
-ФАЙЛ: types/mark-price.go
+FILE: types/mark-price.go
 
-ОПИСАНИЕ:
-MarkPrice — справедливая (mark) цена инструмента, по которой OKX считает
-PnL для perp/futures/options и проводит ликвидации. Отличается от
-last-trade цены: сглажена через комбинацию индекса и спреда.
+DESCRIPTION:
+MarkPrice — the fair (mark) price of an instrument, which OKX uses to
+calculate PnL for perp/futures/options and to trigger liquidations. Differs
+from the last-trade price: smoothed through a combination of index and spread.
 
-Маппится из:
+Mapped from:
   - GET /api/v5/public/mark-price?instType=...|instId=...
   - WS public channel "mark-price"
 
-Применение для HFT:
-  - mark-price используется при расчёте unrealized PnL и margin ratio;
-  - резкое расхождение (last - mark) сигнализирует о торгуемой
-    дисперсии (premium/discount к индексу).
+HFT usage:
+  - mark price is used for unrealized PnL and margin ratio calculations;
+  - a sharp divergence (last - mark) signals a tradable dispersion
+    (premium/discount to the index).
 */
 
 package types
 
 import "github.com/shopspring/decimal"
 
-// MarkPrice — snapshot mark-цены.
+// MarkPrice — mark price snapshot.
 type MarkPrice struct {
-	// InstType — тип инструмента (SWAP/FUTURES/OPTION).
+	// InstType — instrument type (SWAP/FUTURES/OPTION).
 	InstType InstType
-	// InstID — идентификатор инструмента.
+	// InstID — instrument identifier.
 	InstID string
-	// MarkPx — текущая mark-цена (markPx).
+	// MarkPx — current mark price (markPx).
 	MarkPx decimal.Decimal
-	// Ts — таймштамп snapshot'а в мс (ts).
+	// Ts — snapshot timestamp in ms (ts).
 	Ts int64
 }
 
-// MarkPrices — слайс mark-цен.
+// MarkPrices — slice of mark prices.
 type MarkPrices []MarkPrice

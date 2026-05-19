@@ -1,23 +1,23 @@
 /*
-ФАЙЛ: spot/stream.go
+FILE: spot/stream.go
 
-ОПИСАНИЕ:
-Доменный саб-клиент WebSocket-подписок SPOT. Поверх internal/ws.Conn
-с теми же паттернами, что в swap/stream.go:
-  - один public-conn на весь spot-client (books, bbo-tbt, trades);
-  - один private-conn (orders, account);
-  - reconnect/relogin/resubscribe прозрачны для пользователя;
-  - локальные ошибки парсинга — log+drop.
+DESCRIPTION:
+Domain sub-client for SPOT WebSocket subscriptions. Built on top of internal/ws.Conn
+with the same patterns as swap/stream.go:
+  - one public-conn for the entire spot client (books, bbo-tbt, trades);
+  - one private-conn (orders, account);
+  - reconnect/relogin/resubscribe are transparent to the caller;
+  - local parse errors — log+drop.
 
-КАНАЛЫ OKX для SPOT (то, что мы поддерживаем):
-  - "books"      : полный стакан (тот же протокол с checksum/seqId, что у SWAP).
+OKX CHANNELS FOR SPOT (supported):
+  - "books"      : full order book (same protocol with checksum/seqId as SWAP).
   - "bbo-tbt"    : best bid/ask, tick-by-tick.
-  - "trades"     : сделки.
-  - "orders"     : приватный, InstType="SPOT" для фильтрации именно спот-ордеров.
-  - "account"    : приватный, unified-account balance updates (общий с SWAP).
+  - "trades"     : trades.
+  - "orders"     : private, InstType="SPOT" to filter spot orders only.
+  - "account"    : private, unified-account balance updates (shared with SWAP).
 
-ЧЕГО ЗДЕСЬ НЕТ (по сравнению с swap/stream.go):
-  - mark-price, index-tickers, positions — этих каналов на SPOT нет/не нужны.
+NOT PRESENT (compared to swap/stream.go):
+  - mark-price, index-tickers, positions — these channels do not exist / are not needed for SPOT.
 */
 
 package spot
@@ -32,7 +32,7 @@ import (
 	"github.com/tonymontanov/go-okx/v2/spot/types"
 )
 
-// StreamClient — саб-клиент WS-подписок SPOT.
+// StreamClient — SPOT WS subscriptions sub-client.
 type StreamClient struct {
 	c *Client
 }
@@ -45,7 +45,7 @@ func newStreamClient(c *Client) *StreamClient {
 // PUBLIC streams
 // ----------------------------------------------------------------------------
 
-// rawBookPush — push-данные канала books.
+// rawBookPush — push data for the books channel.
 type rawBookPush struct {
 	Asks      [][]string `json:"asks"`
 	Bids      [][]string `json:"bids"`
@@ -56,9 +56,9 @@ type rawBookPush struct {
 }
 
 /*
-WatchOrderbook подписывается на канал books и поддерживает локальный стакан
-через orderbook.Engine. Семантика идентична swap.WatchOrderbook — формат
-канала books одинаков для SPOT и SWAP в OKX v5.
+WatchOrderbook subscribes to the books channel and maintains a local order book
+via orderbook.Engine. Semantics are identical to swap.WatchOrderbook — the books
+channel format is the same for SPOT and SWAP in OKX v5.
 */
 func (s *StreamClient) WatchOrderbook(
 	ctx context.Context, instID string, depth int,
@@ -68,22 +68,22 @@ func (s *StreamClient) WatchOrderbook(
 }
 
 /*
-WatchOrderbookL2Tbt подписывается на канал books-l2-tbt: ПОЛНЫЙ L2-стакан
-tick-by-tick (push на каждое изменение, без батчинга по 100ms). Формат
-сообщений идентичен "books" (snapshot+update+checksum+seqId), поэтому
-используется тот же orderbook.Engine.
+WatchOrderbookL2Tbt subscribes to the books-l2-tbt channel: FULL L2 order book
+tick-by-tick (push on every change, no 100ms batching). The message format is
+identical to "books" (snapshot+update+checksum+seqId), so the same orderbook.Engine
+is used.
 
-ТРЕБОВАНИЯ OKX: канал доступен только VIP4+ или Market Maker. Если
-аккаунт ниже — биржа ответит error-event с code 60018.
+OKX REQUIREMENTS: channel available to VIP4+ or Market Maker only. Lower-tier
+accounts will receive an error-event with code 60018.
 
-КОГДА БРАТЬ:
-  - стратегии с очень короткими интервалами котирования (≤10 мс),
-    которым важно ловить промежуточные изменения top-of-book;
-  - latency-арбитраж и cross-exchange MM.
+WHEN TO USE:
+  - strategies with very short quoting intervals (≤10 ms) that need to catch
+    intermediate top-of-book changes;
+  - latency arbitrage and cross-exchange MM.
 
-КОГДА НЕ БРАТЬ:
-  - канал гораздо «громче» (по объёму трафика и CPU на парсинг). Для
-    обычной MM-стратегии достаточно "books" с 100ms батчингом.
+WHEN NOT TO USE:
+  - the channel is much "noisier" (higher traffic volume and CPU for parsing).
+    For a typical MM strategy "books" with 100ms batching is sufficient.
 */
 func (s *StreamClient) WatchOrderbookL2Tbt(
 	ctx context.Context, instID string, depth int,
@@ -93,11 +93,11 @@ func (s *StreamClient) WatchOrderbookL2Tbt(
 }
 
 /*
-WatchOrderbookBooks50L2Tbt подписывается на канал books50-l2-tbt: top-50
-L2-стакан tick-by-tick. Промежуточный по требованиям и нагрузке между
-"books" и "books-l2-tbt".
+WatchOrderbookBooks50L2Tbt subscribes to the books50-l2-tbt channel: top-50
+L2 order book tick-by-tick. Intermediate in requirements and load between
+"books" and "books-l2-tbt".
 
-ТРЕБОВАНИЯ OKX: VIP2+ или Market Maker.
+OKX REQUIREMENTS: VIP2+ or Market Maker.
 */
 func (s *StreamClient) WatchOrderbookBooks50L2Tbt(
 	ctx context.Context, instID string, depth int,
@@ -107,19 +107,19 @@ func (s *StreamClient) WatchOrderbookBooks50L2Tbt(
 }
 
 /*
-WatchOrderbookBooks5 подписывается на канал books5: top-5 уровней,
-batch 100ms. В отличие от других book-каналов, push приходит как
-ПОЛНЫЙ snapshot (без incremental updates и checksum'ов). Поэтому
-orderbook.Engine не нужен — handler получает snapshot напрямую.
+WatchOrderbookBooks5 subscribes to the books5 channel: top-5 levels,
+batched at 100ms. Unlike other book channels, each push is a FULL snapshot
+(no incremental updates or checksums). Therefore orderbook.Engine is not
+needed — the handler receives the snapshot directly.
 
-КОГДА БРАТЬ:
-  - стратегия использует только top-of-book (top-5 хватает с запасом);
-  - не нужна гарантия консистентности с биржей (snapshot самодостаточен);
-  - хочется минимальной нагрузки на парсинг и нулевого state на клиенте.
+WHEN TO USE:
+  - the strategy uses top-of-book only (top-5 is more than enough);
+  - consistency guarantees against the exchange are not required (snapshot is self-contained);
+  - minimal parsing overhead and zero client-side state are desired.
 
-ОГРАНИЧЕНИЯ:
-  - depth-параметр игнорируется (всегда 5);
-  - SeqID/Checksum в snapshot не заполняются.
+LIMITATIONS:
+  - depth parameter is ignored (always 5);
+  - SeqID/Checksum are not populated in the snapshot.
 */
 func (s *StreamClient) WatchOrderbookBooks5(
 	ctx context.Context, instID string,
@@ -157,9 +157,9 @@ func (s *StreamClient) WatchOrderbookBooks5(
 	return nil
 }
 
-// watchBookEngine — общая реализация для всех L2-каналов с инкрементальными
-// обновлениями (books, books-l2-tbt, books50-l2-tbt). Один формат
-// сообщений, один engine, одна логика — отличается только имя канала.
+// watchBookEngine — shared implementation for all L2 channels with incremental
+// updates (books, books-l2-tbt, books50-l2-tbt). One message format, one engine,
+// one logic — only the channel name differs.
 func (s *StreamClient) watchBookEngine(
 	ctx context.Context, channel, instID string, depth int,
 	handler func(types.OrderBookSnapshot), errHandler func(error),
@@ -236,7 +236,7 @@ func (s *StreamClient) watchBookEngine(
 	return nil
 }
 
-// parseBookLevels превращает [["px","sz",...], ...] → []OrderBookLevel.
+// parseBookLevels converts [["px","sz",...], ...] → []OrderBookLevel.
 func parseBookLevels(raw [][]string) []types.OrderBookLevel {
 	var out []types.OrderBookLevel = make([]types.OrderBookLevel, 0, len(raw))
 	var i int
@@ -259,7 +259,7 @@ func parseBookLevels(raw [][]string) []types.OrderBookLevel {
 	return out
 }
 
-// rawBboPush — push-данные канала bbo-tbt.
+// rawBboPush — push data for the bbo-tbt channel.
 type rawBboPush struct {
 	Asks [][]string `json:"asks"`
 	Bids [][]string `json:"bids"`
@@ -267,7 +267,7 @@ type rawBboPush struct {
 }
 
 /*
-WatchSpread подписывается на канал bbo-tbt и отдаёт обновления best bid/ask.
+WatchSpread subscribes to the bbo-tbt channel and delivers best bid/ask updates.
 */
 func (s *StreamClient) WatchSpread(
 	ctx context.Context, instID string,
@@ -315,7 +315,7 @@ func (s *StreamClient) WatchSpread(
 	return nil
 }
 
-// rawTradePush — push-данные канала trades.
+// rawTradePush — push data for the trades channel.
 type rawTradePush struct {
 	InstID  string `json:"instId"`
 	TradeID string `json:"tradeId"`
@@ -325,7 +325,7 @@ type rawTradePush struct {
 	Ts      string `json:"ts"`
 }
 
-// WatchLastPrice — канал trades, отдаёт только цену и timestamp.
+// WatchLastPrice — trades channel, delivers price and timestamp only.
 func (s *StreamClient) WatchLastPrice(
 	ctx context.Context, instID string,
 	handler func(price float64, tsMs int64), errHandler func(error),
@@ -362,7 +362,7 @@ func (s *StreamClient) WatchLastPrice(
 	return nil
 }
 
-// WatchAggTrades — канал trades, полная AggTrade.
+// WatchAggTrades — trades channel, full AggTrade.
 func (s *StreamClient) WatchAggTrades(
 	ctx context.Context, instID string,
 	handler func(types.AggTrade), errHandler func(error),
@@ -408,7 +408,7 @@ func (s *StreamClient) WatchAggTrades(
 // PRIVATE streams
 // ----------------------------------------------------------------------------
 
-// rawOrderPush — push-данные канала orders.
+// rawOrderPush — push data for the orders channel.
 type rawOrderPush struct {
 	InstID    string `json:"instId"`
 	OrdID     string `json:"ordId"`
@@ -424,12 +424,12 @@ type rawOrderPush struct {
 }
 
 /*
-WatchAccount — канал account (приватный). Каждое push-сообщение содержит
-снимок баланса unified-account. Подписка живёт пока ctx не отменён.
+WatchAccount — account channel (private). Each push message contains a
+unified-account balance snapshot. Subscription lives until ctx is cancelled.
 
-Канал общий для SPOT и SWAP (unified-account), но иметь его и в spot-стриме
-важно для приложений, которые работают только со SPOT и не хотят инициализировать
-SWAP-клиент (это сэкономит одно WS-соединение).
+The channel is shared between SPOT and SWAP (unified-account), but exposing it
+in the spot stream is important for applications that work with SPOT only and do
+not want to initialise the SWAP client (saving one WS connection).
 */
 func (s *StreamClient) WatchAccount(
 	ctx context.Context,
@@ -467,8 +467,8 @@ func (s *StreamClient) WatchAccount(
 }
 
 /*
-WatchOpenOrders — канал orders (приватный) с фильтром InstType="SPOT".
-Callback получает список ордеров, присланных в одном push'е.
+WatchOpenOrders — orders channel (private) filtered by InstType="SPOT".
+The callback receives the list of orders delivered in a single push.
 */
 func (s *StreamClient) WatchOpenOrders(
 	ctx context.Context, instID string,
@@ -527,7 +527,7 @@ func (s *StreamClient) WatchOpenOrders(
 	return nil
 }
 
-// rawFillPush — push-данные канала fills.
+// rawFillPush — push data for the fills channel.
 type rawFillPush struct {
 	InstType    string `json:"instType"`
 	InstID      string `json:"instId"`
@@ -554,23 +554,22 @@ type rawFillPush struct {
 }
 
 /*
-WatchFills — приватный канал "fills" с фильтром InstType="SPOT". Шлёт
-push на каждое исполнение (полное или частичное) с минимальной
-для биржи задержкой — НИЖЕ, чем у канала "orders", где исполнения
-видны как часть state-machine ордера.
+WatchFills — private "fills" channel filtered by InstType="SPOT". Pushes
+on every execution (full or partial) with the minimum exchange latency —
+LOWER than the "orders" channel, where executions appear as part of the
+order state machine.
 
-ТРЕБОВАНИЯ OKX: VIP5+ или Market Maker. Иначе сервер ответит 60018.
+OKX REQUIREMENTS: VIP5+ or Market Maker. Otherwise the server responds 60018.
 
-ВЫИГРЫШ:
-  - меньше латентность fill-event'а vs парсинга "orders";
-  - нет шумных промежуточных state-update'ов (live → live amend → ...);
-  - содержит fillPnl и execType (T/M) в готовом виде — не нужно
-    выводить через дополнительный round-trip GetFill.
+ADVANTAGES:
+  - lower fill-event latency vs parsing "orders";
+  - no noisy intermediate state-updates (live → live amend → ...);
+  - fillPnl and execType (T/M) are provided ready to use — no extra
+    round-trip GetFill is needed.
 
-ПАРАМЕТРЫ:
-  - instID опционален: пустой = все SPOT-инструменты по аккаунту;
-  - в одном push'е может быть несколько fill'ов — handler вызывается
-    по одному разу на каждый.
+PARAMETERS:
+  - instID is optional: empty = all SPOT instruments for the account;
+  - a single push may contain multiple fills — handler is called once per fill.
 */
 func (s *StreamClient) WatchFills(
 	ctx context.Context, instID string,
@@ -612,7 +611,7 @@ func (s *StreamClient) WatchFills(
 	return nil
 }
 
-// convertFill маппит raw push fills в типизированный Fill.
+// convertFill maps raw push fills to a typed Fill.
 func convertFill(p rawFillPush) types.Fill {
 	var f types.Fill
 	f.InstType = types.InstType(p.InstType)

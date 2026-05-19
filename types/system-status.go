@@ -1,71 +1,71 @@
 /*
-ФАЙЛ: types/system-status.go
+FILE: types/system-status.go
 
-ОПИСАНИЕ:
-ServerTime — текущее время сервера OKX (для clock-sync).
-SystemStatus — расписание maintenance-окон по продуктам биржи.
+DESCRIPTION:
+ServerTime — current OKX server time (for clock sync).
+SystemStatus — schedule of maintenance windows per exchange product.
 
-Маппятся из:
+Mapped from:
   - GET /api/v5/public/time   → ServerTime
-  - GET /api/v5/system/status → SystemStatus (массив)
+  - GET /api/v5/system/status → SystemStatus (array)
 
-HFT-применение:
-  - ServerTime: критично для clock skew detection — расхождение
-    клиентских часов и серверных > N мс может стать причиной 401
-    (invalid timestamp в signature);
-  - SystemStatus: позволяет заранее остановить стратегию перед
-    объявленным maintenance-окном и избежать «зависших» ордеров.
+HFT usage:
+  - ServerTime: critical for clock skew detection — a divergence between
+    client and server clocks > N ms can cause 401 (invalid timestamp in
+    the signature);
+  - SystemStatus: allows stopping a strategy ahead of an announced
+    maintenance window to avoid "stuck" orders.
 */
 
 package types
 
-// ServerTime — текущее время сервера OKX.
+// ServerTime — current OKX server time.
 type ServerTime struct {
-	// Ts — таймштамп сервера в миллисекундах (ts).
+	// Ts — server timestamp in milliseconds (ts).
 	Ts int64
 }
 
-// SystemStatusState — состояние maintenance-окна.
+// SystemStatusState — maintenance window state.
 type SystemStatusState string
 
 const (
-	// SystemStatusScheduled — окно запланировано (scheduled).
+	// SystemStatusScheduled — window is scheduled (scheduled).
 	SystemStatusScheduled SystemStatusState = "scheduled"
-	// SystemStatusOngoing — окно сейчас активно (ongoing).
+	// SystemStatusOngoing — window is currently active (ongoing).
 	SystemStatusOngoing SystemStatusState = "ongoing"
-	// SystemStatusPreOpen — pre-open фаза после окна.
+	// SystemStatusPreOpen — pre-open phase after the window.
 	SystemStatusPreOpen SystemStatusState = "pre_open"
-	// SystemStatusCompleted — окно завершено (completed).
+	// SystemStatusCompleted — window has completed (completed).
 	SystemStatusCompleted SystemStatusState = "completed"
-	// SystemStatusCanceled — окно отменено (canceled).
+	// SystemStatusCanceled — window was canceled (canceled).
 	SystemStatusCanceled SystemStatusState = "canceled"
 )
 
-// SystemStatus — одна запись о maintenance-окне.
+// SystemStatus — one maintenance window record.
 type SystemStatus struct {
-	// Title — описание (title).
+	// Title — description (title).
 	Title string
-	// State — состояние окна (state).
+	// State — window state (state).
 	State SystemStatusState
-	// BeginTs — начало в мс (begin).
+	// BeginTs — start in ms (begin).
 	BeginTs int64
-	// EndTs — конец в мс (end).
+	// EndTs — end in ms (end).
 	EndTs int64
-	// Href — ссылка на анонс (href).
+	// Href — link to the announcement (href).
 	Href string
-	// ServiceType — затронутый сервис (serviceType: "0" WS public,
+	// ServiceType — affected service (serviceType: "0" WS public,
 	// "1" WS private, "2" WS account, "5" trading service, "6" block
 	// trading, "8" trading service for batch orders, "99" general).
 	ServiceType string
-	// System — затронутая система (system: "classic"/"unified").
+	// System — affected system (system: "classic"/"unified").
 	System string
-	// ScheduleDescription — детальное описание расписания (scheDesc).
+	// ScheduleDescription — detailed schedule description (scheDesc).
 	ScheduleDescription string
-	// MaintType — тип ("1" scheduled, "2" unscheduled).
+	// MaintType — type ("1" scheduled, "2" unscheduled).
 	MaintType string
-	// PreOpenBegin — начало pre-open фазы в мс (preOpenBegin).
+	// PreOpenBegin — pre-open phase start in ms (preOpenBegin).
 	PreOpenBegin int64
 }
 
-// SystemStatuses — слайс.
+// SystemStatuses — slice.
 type SystemStatuses []SystemStatus

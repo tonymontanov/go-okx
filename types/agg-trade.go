@@ -1,30 +1,31 @@
 /*
-ФАЙЛ: types/agg-trade.go
+FILE: types/agg-trade.go
 
-ОПИСАНИЕ:
-AggTrade — одна агрегированная сделка из потока WS-канала `trades`. OKX, в
-отличие от Binance, не делает явной агрегации — в канале `trades` приходит
-каждая publicly visible сделка. Для совместимости с core (где есть тип AggTrade)
-мы используем то же имя, но с decimal-полями.
+DESCRIPTION:
+AggTrade — a single aggregated trade from the WS channel `trades`. Unlike Binance,
+OKX does not perform explicit aggregation — every publicly visible trade appears
+individually in the `trades` channel. The same name is used for compatibility with
+core (which has an AggTrade type), but with decimal fields.
 
-Формат канала trades идентичен для spot и swap у OKX v5 — отличается только
-семантика Size (base ccy для spot / контракты для swap), это решает адаптер.
+The trades channel format is identical for spot and swap in OKX v5 — only the
+semantics of Size differ (base ccy for spot / contracts for swap), which is resolved
+by the adapter.
 
-ПОЛЯ:
-  - InstID       — инструмент.
-  - TradeID      — уникальный id сделки.
-  - Price        — цена сделки.
-  - Size         — объём (base ccy для spot / контракты для swap).
-  - Side         — направление taker (buy/sell).
-  - IsBuyerMaker — true, если maker — покупатель (для compatibility с core).
-  - Ts           — таймштамп (мс).
+FIELDS:
+  - InstID       — instrument.
+  - TradeID      — unique trade id.
+  - Price        — trade price.
+  - Size         — volume (base ccy for spot / contracts for swap).
+  - Side         — taker direction (buy/sell).
+  - IsBuyerMaker — true if the maker is the buyer (for core compatibility).
+  - Ts           — timestamp (ms).
 */
 
 package types
 
 import "github.com/shopspring/decimal"
 
-// AggTrade — одна сделка из потока trades.
+// AggTrade — one trade from the trades stream.
 type AggTrade struct {
 	InstID       string
 	TradeID      string

@@ -1,49 +1,47 @@
 /*
-Package types — протокольно-общие типы OKX v5, разделяемые всеми профилями
-(spot, swap, в будущем futures/options).
+Package types — protocol-shared OKX v5 types used by all profiles
+(spot, swap, and futures/options in the future).
 
-ЗАЧЕМ ОТДЕЛЬНЫЙ ПАКЕТ:
-Раньше "общие" enum'ы и data-структуры (SideType, OrderType, OrderBookLevel,
-Balance, ...) жили в swap/types, а spot/types ссылался на них алиасами. Это
-создавало логически некорректную зависимость spot → swap: spot-профиль не
-должен знать о существовании swap, оба должны быть равноправными
-консьюмерами протокольного слоя.
+WHY A SEPARATE PACKAGE:
+Previously "common" enums and data structures (SideType, OrderType, OrderBookLevel,
+Balance, ...) lived in swap/types, and spot/types referenced them via aliases. This
+created a logically incorrect dependency spot → swap: the spot profile must not
+know about the existence of swap; both should be equal consumers of the protocol layer.
 
-Этот пакет — выделенный нейтральный слой:
+This package is a dedicated neutral layer:
 
-	github.com/tonymontanov/go-okx/v2/types/  ← общий протокольный слой (этот пакет)
+	github.com/tonymontanov/go-okx/v2/types/  ← shared protocol layer (this package)
 	    ↑                          ↑
 	    │                          │
-	swap/types/                spot/types/   ← профильные пакеты, алиасы + свои типы
+	swap/types/                spot/types/   ← profile packages, aliases + own types
 
-ЧТО ЛЕЖИТ ЗДЕСЬ:
-  - Enum'ы протокола OKX, общие для всех instType: SideType, OrderType (общие
-    значения), TimeInForceType, TdMode, InstType, OrderState + ParseOrderState.
-  - Структуры WS/REST одинакового формата для всех профилей: OrderBookLevel,
+WHAT LIVES HERE:
+  - OKX protocol enums common to all instTypes: SideType, OrderType (shared
+    values), TimeInForceType, TdMode, InstType, OrderState + ParseOrderState.
+  - WS/REST structs with an identical format across all profiles: OrderBookLevel,
     OrderBookSnapshot, Candle/Candles, Timeframe, AggTrade, QuotedSpreadUpdate.
-  - Unified-account модель: Balance, BalanceDetail (OKX отдаёт ОДИН баланс на
-    пользователя для всех профилей).
+  - Unified-account model: Balance, BalanceDetail (OKX returns ONE balance per
+    user for all profiles).
 
-ЧТО НЕ ЛЕЖИТ ЗДЕСЬ:
-  - Профильные типы запросов: CreateOrderRequest, ModifyOrderRequest,
-    CancelOrderRequest, OrderInfo, SymbolInfo. У spot и swap они отличаются
-    набором полей (PosSide/ReduceOnly есть только у swap; TgtCcy — только
-    у spot; SymbolInfo.CtVal — только у swap и т. д.). См. swap/types/* и
-    spot/types/*.
-  - Enum'ы и константы, специфичные для одного профиля: PosSide, PositionMode
-    (swap-only, hedge mode); OrderTypeOptimalLimitIOC (swap-only ord type).
-    Они живут в swap/types и работают поверх общего OrderType.
+WHAT DOES NOT LIVE HERE:
+  - Profile-specific request types: CreateOrderRequest, ModifyOrderRequest,
+    CancelOrderRequest, OrderInfo, SymbolInfo. spot and swap differ in their
+    field sets (PosSide/ReduceOnly exist only in swap; TgtCcy — only in spot;
+    SymbolInfo.CtVal — only in swap, etc.). See swap/types/* and spot/types/*.
+  - Enums and constants specific to one profile: PosSide, PositionMode
+    (swap-only, hedge mode); OrderTypeOptimalLimitIOC (swap-only order type).
+    They live in swap/types and extend the common OrderType.
 
 BACKWARDS COMPATIBILITY:
-Существующие пользователи продолжают импортировать swap/types и spot/types и
-обращаться к типам через них — оба пакета type-alias'ятся на этот. Прямой
-импорт github.com/tonymontanov/go-okx/v2/types не обязателен.
+Existing users continue importing swap/types and spot/types and accessing types
+through them — both packages type-alias to this one. A direct import of
+github.com/tonymontanov/go-okx/v2/types is not required.
 
-КОДСТАЙЛ:
-Этот пакет следует тем же правилам, что и остальной SDK:
-  - имена файлов в kebab-case;
-  - один тип на файл, где смысл этого оправдан;
-  - struct-fields с decimal.Decimal без эпсилон-сравнений;
-  - проектная аннотация в шапке файла.
+CODE STYLE:
+This package follows the same rules as the rest of the SDK:
+  - file names in kebab-case;
+  - one type per file where it makes sense;
+  - struct fields with decimal.Decimal, no epsilon comparisons;
+  - file header annotation at the top of each file.
 */
 package types

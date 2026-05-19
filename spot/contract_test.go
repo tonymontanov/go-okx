@@ -1,9 +1,9 @@
 /*
-ФАЙЛ: spot/contract_test.go
+FILE: spot/contract_test.go
 
-ОПИСАНИЕ:
-Contract-тесты SPOT-клиента. Покрывают парсинг реальных JSON-фикстур
-OKX v5 для SPOT-эндпоинтов:
+DESCRIPTION:
+Contract tests for the SPOT client. Cover parsing of real OKX v5 JSON fixtures
+for SPOT endpoints:
   - GetSymbolInfo           : /api/v5/public/instruments?instType=SPOT
   - GetOrderBook            : /api/v5/market/books
   - GetHistoricalCandles    : /api/v5/market/history-candles
@@ -11,11 +11,11 @@ OKX v5 для SPOT-эндпоинтов:
   - GetOpenOrders           : /api/v5/trade/orders-pending?instType=SPOT
   - CreateOrder happy-path  : /api/v5/trade/order
   - CreateOrder reject      : sCode != "0" → *okx.Error
-  - CreateOrder market BUY  : tgtCcy="quote_ccy" должен попадать в тело
+  - CreateOrder market BUY  : tgtCcy="quote_ccy" must appear in the body
   - CancelOrder
-  - rate-limit headers пробрасываются в OrderInfo.RateLimits
+  - rate-limit headers are propagated to OrderInfo.RateLimits
 
-Используется локальный httptest.Server.
+A local httptest.Server is used.
 */
 
 package spot
@@ -46,7 +46,7 @@ func mustDec(s string) decimal.Decimal {
 	return d
 }
 
-// mockOKX поднимает httptest.Server с фикстурами по path и возвращает spot-клиент.
+// mockOKX starts an httptest.Server with fixtures keyed by path and returns a spot client.
 func mockOKX(t *testing.T, routes map[string]string) (*httptest.Server, *okx.Client) {
 	t.Helper()
 	var srv *httptest.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -83,8 +83,8 @@ func mockOKX(t *testing.T, routes map[string]string) (*httptest.Server, *okx.Cli
 func spotOf(c *okx.Client) *Client { return c.Spot().(*Client) }
 
 func TestContract_GetSymbolInfo(t *testing.T) {
-	// Реальный фрагмент ответа OKX docs: GET /public/instruments?instType=SPOT
-	// baseCcy/quoteCcy заполнены, CtVal/CtMult отсутствуют (только для derivatives).
+	// Real fragment of OKX docs response: GET /public/instruments?instType=SPOT
+	// baseCcy/quoteCcy are populated; CtVal/CtMult are absent (derivatives only).
 	var fixture string = `{
 		"code":"0","msg":"",
 		"data":[{
@@ -134,7 +134,7 @@ func TestContract_GetSymbolInfo_NotFound(t *testing.T) {
 }
 
 func TestContract_GetOrderBook(t *testing.T) {
-	// Формат /market/books идентичен для SPOT и SWAP.
+	// The /market/books format is identical for SPOT and SWAP.
 	var fixture string = `{
 		"code":"0","msg":"",
 		"data":[{
@@ -200,7 +200,7 @@ func TestContract_GetHistoricalCandles_SubMinute(t *testing.T) {
 }
 
 func TestContract_GetBalance(t *testing.T) {
-	// Unified-account /account/balance общий для SPOT и SWAP.
+	// Unified-account /account/balance is shared between SPOT and SWAP.
 	var fixture string = `{
 		"code":"0","msg":"",
 		"data":[{
@@ -287,7 +287,7 @@ func TestContract_GetBalance_FilteredCcy(t *testing.T) {
 }
 
 func TestContract_GetOpenOrders(t *testing.T) {
-	// instType=SPOT должен быть передан в query.
+	// instType=SPOT must be passed in the query.
 	var seenInstType string
 	var srv *httptest.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		seenInstType = r.URL.Query().Get("instType")
@@ -336,7 +336,7 @@ func TestContract_GetOpenOrders(t *testing.T) {
 }
 
 func TestContract_CreateOrder_HappyPath(t *testing.T) {
-	// tdMode на спот должен по умолчанию проставиться как "cash".
+	// tdMode on spot must default to "cash".
 	var seenBody map[string]any
 	var srv *httptest.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewDecoder(r.Body).Decode(&seenBody)
@@ -376,7 +376,7 @@ func TestContract_CreateOrder_HappyPath(t *testing.T) {
 	if info.RateLimits["ratelimit-remaining"] != "42" {
 		t.Fatalf("rate-limit header missing, got %v", info.RateLimits)
 	}
-	// Проверяем что tdMode = cash (default для spot), posSide НЕТ.
+	// Verify tdMode = cash (spot default), posSide is absent.
 	if got, _ := seenBody["tdMode"].(string); got != "cash" {
 		t.Fatalf("tdMode: got %q, want cash", got)
 	}
@@ -397,7 +397,7 @@ func TestContract_CreateOrder_HappyPath(t *testing.T) {
 }
 
 func TestContract_CreateOrder_MarketBuy_WithTgtCcy(t *testing.T) {
-	// Для market BUY с tgtCcy=quote_ccy, sz интерпретируется как USDT.
+	// For market BUY with tgtCcy=quote_ccy, sz is interpreted as USDT.
 	var seenBody map[string]any
 	var srv *httptest.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewDecoder(r.Body).Decode(&seenBody)
@@ -434,14 +434,14 @@ func TestContract_CreateOrder_MarketBuy_WithTgtCcy(t *testing.T) {
 	if got, _ := seenBody["ordType"].(string); got != "market" {
 		t.Fatalf("ordType: got %q, want market", got)
 	}
-	// market — не должно быть px
+	// market — px must be absent
 	if _, has := seenBody["px"]; has {
 		t.Fatal("px must NOT be set for market order")
 	}
 }
 
 func TestContract_CreateOrder_MarketBuy_NoTgtCcy_NotSent(t *testing.T) {
-	// Если TgtCcy пуст, поле не должно отправляться (OKX default = quote_ccy для buy).
+	// If TgtCcy is empty, the field must not be sent (OKX default = quote_ccy for buy).
 	var seenBody map[string]any
 	var srv *httptest.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewDecoder(r.Body).Decode(&seenBody)
@@ -476,7 +476,7 @@ func TestContract_CreateOrder_MarketBuy_NoTgtCcy_NotSent(t *testing.T) {
 }
 
 func TestContract_CreateOrder_LimitIgnoresTgtCcy(t *testing.T) {
-	// Для limit-ордера tgtCcy игнорируется (OKX это не поле для limit).
+	// For a limit order tgtCcy is ignored (OKX does not use this field for limit).
 	var seenBody map[string]any
 	var srv *httptest.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewDecoder(r.Body).Decode(&seenBody)
@@ -563,7 +563,7 @@ func TestContract_CreateOrder_TopLevelAuthError(t *testing.T) {
 }
 
 func TestContract_CreateOrder_InvalidClientOrderID(t *testing.T) {
-	// Подчёркивания запрещены в clOrdId OKX.
+	// Underscores are forbidden in OKX clOrdId.
 	var _, client = mockOKX(t, map[string]string{})
 	var _, err = spotOf(client).Trading().CreateOrder(context.Background(), types.CreateOrderRequest{
 		InstID:        "BTC-USDT",
@@ -644,7 +644,7 @@ func TestContract_CancelAllAfter(t *testing.T) {
 }
 
 func TestContract_CancelAllAfter_Disarm(t *testing.T) {
-	// При timeout=0 OKX возвращает triggerTime=""; парсинг должен дать 0.
+	// When timeout=0 OKX returns triggerTime=""; parsing must produce 0.
 	var fixture string = `{
 		"code":"0","msg":"",
 		"data":[{"triggerTime":"","ts":"1700000000000"}]

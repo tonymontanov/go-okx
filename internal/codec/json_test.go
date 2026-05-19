@@ -1,8 +1,8 @@
 /*
-ФАЙЛ: internal/codec/json_test.go
+FILE: internal/codec/json_test.go
 
-ОПИСАНИЕ:
-Тесты codec — парсеры строк в decimal/int64/float64 и Marshal/Unmarshal обёртки.
+DESCRIPTION:
+codec tests — string parsers for decimal/int64/float64 and Marshal/Unmarshal wrappers.
 */
 
 package codec

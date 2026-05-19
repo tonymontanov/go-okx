@@ -1,37 +1,37 @@
 /*
-ФАЙЛ: swap/trading_ws.go
+FILE: swap/trading_ws.go
 
-ОПИСАНИЕ:
-WSTradingClient — sub-client торговли через WebSocket Order API для
-SWAP. Экспозит ту же поверхность, что и REST-TradingClient (CreateOrder/
-ModifyOrder/CancelOrder + batch + MassCancel), но шлёт команды через
-один установленный private-WS conn вместо HTTP/2 round-trip'а.
+DESCRIPTION:
+WSTradingClient — trading sub-client via the WebSocket Order API for SWAP.
+Exposes the same surface as REST-TradingClient (CreateOrder/ModifyOrder/
+CancelOrder + batch + MassCancel), but sends commands over a single
+established private-WS conn instead of an HTTP/2 round-trip.
 
-ВЫИГРЫШ В ЛАТЕНТНОСТИ vs REST:
-Типично 30-50% time-to-exchange: снимается TLS handshake / HTTP framing /
-TCP slow-start; остаётся только TLS encrypt + write на уже установленный
-сокет + read reply. Для perp-MM это разница между «успели в очередь до
-toxic-flow» и нет.
+LATENCY GAIN vs REST:
+Typically 30-50% time-to-exchange: TLS handshake / HTTP framing / TCP slow-start
+are eliminated; only TLS encrypt + write on the already-established socket +
+read reply remain. For perp MM this is the difference between getting into
+the queue before toxic flow and not.
 
-МУЛЬТИПЛЕКСИРОВАНИЕ:
-WS Order API живёт на ТОМ ЖЕ private-WS conn, что и subscriptions
-(orders/positions/account). SendOp в internal/ws/conn.go корректно
-correlate'ит reply по id, не путаясь с push-сообщениями.
+MULTIPLEXING:
+The WS Order API lives on THE SAME private-WS conn as subscriptions
+(orders/positions/account). SendOp in internal/ws/conn.go correctly
+correlates replies by id without confusing them with push messages.
 
 PAYLOAD:
-Переиспользуется buildCreateOrderBody / buildAmendOrderBody /
-buildCancelOrderBody из trading.go — нет дублирующей валидации.
+buildCreateOrderBody / buildAmendOrderBody / buildCancelOrderBody from
+trading.go are reused — no duplicated validation logic.
 
 RATE-LIMITS:
-WS Order API у OKX имеет ОТДЕЛЬНЫЕ лимиты (4000 orders/s суммарно).
-Они НЕ моделируются в SDK (observers подключены только к REST-
-транспорту). Это сознательно: WS-лимиты редко становятся узким местом,
-а инвазивная интеграция в WS-loop потребует отдельной observer-API.
+The OKX WS Order API has SEPARATE limits (4000 orders/s total).
+They are NOT modelled in the SDK (observers are only wired to the REST
+transport). This is intentional: WS limits rarely become a bottleneck,
+and invasive integration into the WS loop would require a dedicated observer API.
 
-MASSCANCEL:
-Для SWAP полностью применим: instType="SWAP", instFamily=<base-quote>
-(например "BTC-USDT") отменяет все ордера на perp'ах этого
-underlying'а одним sweep'ом. Это panic-button для риск-менеджмента.
+MASS-CANCEL:
+Fully applicable to SWAP: instType="SWAP", instFamily=<base-quote>
+(e.g. "BTC-USDT") cancels all orders on perps of that underlying in
+a single sweep. This is a panic-button for risk management.
 */
 
 package swap
@@ -48,9 +48,9 @@ import (
 	"github.com/tonymontanov/go-okx/v2/swap/types"
 )
 
-// WSDefaultTimeout — мягкий потолок ожидания reply, если ctx-deadline
-// не выставлен. 10 секунд — заведомо больше реального WS RTT и защищает
-// от подвисов при сбоях reply-pipeline.
+// WSDefaultTimeout — soft ceiling for reply wait when no ctx-deadline is set.
+// 10 seconds is well above the real WS RTT and protects against hangs on
+// reply-pipeline failures.
 const WSDefaultTimeout = 10 * time.Second
 
 // WSTradingClient — sub-client WS Order API.
@@ -58,9 +58,8 @@ type WSTradingClient struct {
 	t *TradingClient
 }
 
-// WS возвращает WS-вариант торговли. Идемпотентно: один экземпляр на
-// TradingClient. Lazy: реальный connect/login происходит при первом
-// вызове WS-метода.
+// WS returns the WS trading variant. Idempotent: one instance per TradingClient.
+// Lazy: actual connect/login happens on the first WS method call.
 func (t *TradingClient) WS() *WSTradingClient {
 	return &WSTradingClient{t: t}
 }
@@ -77,8 +76,8 @@ func (w *WSTradingClient) ensureReady(ctx context.Context) error {
 }
 
 /*
-CreateOrder — WS-вариант создания одного perp-ордера. Сигнатура
-идентична REST: переключение делается заменой .Trading() на .Trading().WS().
+CreateOrder — WS variant of single perp order creation. Signature identical to
+REST: switch by replacing .Trading() with .Trading().WS().
 */
 func (w *WSTradingClient) CreateOrder(ctx context.Context, req types.CreateOrderRequest) (types.OrderInfo, error) {
 	var info types.OrderInfo
@@ -125,7 +124,7 @@ func (w *WSTradingClient) CreateOrder(ctx context.Context, req types.CreateOrder
 	return info, nil
 }
 
-// ModifyOrder — WS-вариант amend.
+// ModifyOrder — WS variant of amend.
 func (w *WSTradingClient) ModifyOrder(ctx context.Context, req types.ModifyOrderRequest) (types.OrderInfo, error) {
 	var info types.OrderInfo
 	var err error
@@ -168,7 +167,7 @@ func (w *WSTradingClient) ModifyOrder(ctx context.Context, req types.ModifyOrder
 	return info, nil
 }
 
-// CancelOrder — WS-вариант cancel одного ордера.
+// CancelOrder — WS variant of single order cancel.
 func (w *WSTradingClient) CancelOrder(ctx context.Context, req types.CancelOrderRequest) error {
 	var body map[string]any
 	var err error
@@ -200,7 +199,7 @@ func (w *WSTradingClient) CancelOrder(ctx context.Context, req types.CancelOrder
 	return nil
 }
 
-// CreateBatchOrders — WS-вариант batch create.
+// CreateBatchOrders — WS variant of batch create.
 func (w *WSTradingClient) CreateBatchOrders(ctx context.Context, reqs []types.CreateOrderRequest) ([]types.OrderInfo, error) {
 	if len(reqs) == 0 {
 		return nil, nil
@@ -301,7 +300,7 @@ func (w *WSTradingClient) createBatchChunkWS(ctx context.Context, chunk []types.
 	return infos, nil
 }
 
-// ModifyBatchOrders — WS-вариант amend-batch.
+// ModifyBatchOrders — WS variant of amend-batch.
 func (w *WSTradingClient) ModifyBatchOrders(ctx context.Context, reqs []types.ModifyOrderRequest) ([]types.OrderInfo, error) {
 	if len(reqs) == 0 {
 		return nil, nil
@@ -397,7 +396,7 @@ func (w *WSTradingClient) modifyBatchChunkWS(ctx context.Context, chunk []types.
 	return infos, nil
 }
 
-// CancelBatchOrders — WS-вариант cancel-batch.
+// CancelBatchOrders — WS variant of cancel-batch.
 func (w *WSTradingClient) CancelBatchOrders(ctx context.Context, reqs []types.CancelOrderRequest) error {
 	if len(reqs) == 0 {
 		return nil
@@ -469,19 +468,19 @@ func (w *WSTradingClient) cancelBatchChunkWS(ctx context.Context, chunk []types.
 }
 
 /*
-MassCancel — массовая отмена по группе. На SWAP параметр instType="SWAP",
-instFamily — это underlying-pair, например "BTC-USDT". Будут отменены
-ВСЕ открытые ордера на perp'ах этого underlying'а одной операцией.
+MassCancel — bulk cancel by group. For SWAP the parameter instType="SWAP",
+instFamily is the underlying pair, e.g. "BTC-USDT". ALL open orders on perps
+of that underlying are cancelled in a single operation.
 
 PANIC-BUTTON:
-Используется как safety-механизм при потере источника цен, обрыве
-feeda, аварийной остановке стратегии. Завершается за один WS RTT.
+Used as a safety mechanism on price-source loss, feed disconnect, or emergency
+strategy shutdown. Completes in one WS RTT.
 
-ОТНОШЕНИЕ К CANCELALLAFTER:
-mass-cancel — синхронный, делает кенсел СЕЙЧАС.
-cancel-all-after (REST, Phase 2.2) — арм-таймер: «отменишь сама, если
-я не дам сигнал в течение N секунд». Используются совместно: arm на
-старте, mass-cancel на shutdown.
+RELATION TO CANCELALLAFTER:
+mass-cancel — synchronous, cancels NOW.
+cancel-all-after (REST, Phase 2.2) — arm timer: "cancel on your own if I don't
+send a signal within N seconds". Used together: arm at startup, mass-cancel on
+shutdown.
 */
 func (w *WSTradingClient) MassCancel(ctx context.Context, instType, instFamily string) error {
 	if instType == "" {
@@ -518,10 +517,10 @@ func (w *WSTradingClient) MassCancel(ctx context.Context, instType, instFamily s
 }
 
 /*
-CancelAllAfter — WS-вариант dead-man's switch (op="cancel-all-after").
-Семантика идентична REST-варианту в trading.go: timeout > 0 — арм
-(10..120s по spec OKX), timeout == 0 — disarm. Преимущество WS — лучшая
-латентность для refresh-цикла стратегии.
+CancelAllAfter — WS variant of dead-man's switch (op="cancel-all-after").
+Semantics identical to the REST variant in trading.go: timeout > 0 — arm
+(10..120s per OKX spec), timeout == 0 — disarm. WS advantage — lower latency
+for the strategy's refresh loop.
 */
 func (w *WSTradingClient) CancelAllAfter(ctx context.Context, timeout time.Duration) (types.CancelAllAfterResult, error) {
 	var out types.CancelAllAfterResult
@@ -580,10 +579,10 @@ func (w *WSTradingClient) CancelAllAfter(ctx context.Context, timeout time.Durat
 }
 
 /*
-doOp — общая обёртка над ws.Conn.SendOp: формирует OpRequest, ждёт reply,
-проверяет top-level code, парсит Data в массив orderActionResponseEntry.
-Disconnect-reply (Code="disconnected" от failAllPending) конвертируется в
-ErrorKindNetwork — caller может делать errors.As/Is без парсинга строк.
+doOp — common wrapper over ws.Conn.SendOp: builds the OpRequest, waits for
+the reply, checks top-level code, parses Data into []orderActionResponseEntry.
+Disconnect-reply (Code="disconnected" from failAllPending) is converted to
+ErrorKindNetwork — the caller can use errors.As/Is without string parsing.
 */
 func (w *WSTradingClient) doOp(ctx context.Context, op string, args []any) ([]orderActionResponseEntry, error) {
 	var resp ws.OpResponse

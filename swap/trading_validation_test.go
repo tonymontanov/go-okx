@@ -1,15 +1,15 @@
 /*
-ФАЙЛ: swap/trading_validation_test.go
+FILE: swap/trading_validation_test.go
 
-ОПИСАНИЕ:
-Юнит-тесты на клиентскую валидацию запросов в TradingClient. Не делают сетевых
-вызовов — проверяют, что SDK отлавливает невалидные входные данные ДО отправки
-на биржу и возвращает ErrorKindInvalidRequest.
+DESCRIPTION:
+Unit tests for client-side request validation in TradingClient. No network calls
+are made — they verify that the SDK catches invalid input BEFORE sending to the
+exchange and returns ErrorKindInvalidRequest.
 
-Главное покрытие — clOrdId. OKX требует случайный case-sensitive alphanumeric
-1..32 символа: подчёркивания, дефисы, точки и иные символы отклоняются биржей
-кодом 51000 ("Parameter clOrdId error"). Эта проверка должна происходить в
-SDK, а не на бирже.
+Main coverage — clOrdId. OKX requires a case-sensitive alphanumeric string of
+1..32 characters: underscores, hyphens, dots, and other characters are rejected
+by the exchange with code 51000 ("Parameter clOrdId error"). This check must
+happen in the SDK, not at the exchange.
 */
 
 package swap
@@ -55,8 +55,8 @@ func TestCreateOrder_RejectsInvalidClientOrderID(t *testing.T) {
 				ClientOrderID: c.clOrdID,
 			})
 			if c.ok {
-				// Validation должна пройти. Запрос всё равно упадёт (mockOKX вернёт
-				// 404 на /api/v5/trade/order), но это уже не InvalidRequest от SDK.
+				// Validation must pass. The request will still fail (mockOKX returns
+				// 404 for /api/v5/trade/order), but that is not an InvalidRequest from the SDK.
 				if okx.IsInvalidRequest(err) {
 					t.Fatalf("expected validation to pass, got InvalidRequest: %v", err)
 				}

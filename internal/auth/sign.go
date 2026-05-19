@@ -1,45 +1,45 @@
 /*
-ФАЙЛ: internal/auth/sign.go
+FILE: internal/auth/sign.go
 
-ОПИСАНИЕ:
-Файл sign.go реализует подпись REST/WS-запросов к OKX v5. Алгоритм согласно
-официальной документации:
+DESCRIPTION:
+sign.go implements request signing for OKX v5 REST/WS. Algorithm per the
+official documentation:
 
   preHash = timestamp + method + requestPath + body
   signature = base64( HMAC_SHA256(secretKey, preHash) )
 
-Где:
-  - timestamp     — ISO8601 в UTC с миллисекундами и суффиксом 'Z',
-                    напр. "2026-05-15T16:18:00.123Z".
-  - method        — UPPER-CASE HTTP-метод ("GET" / "POST").
-  - requestPath   — URL.Path плюс canonicalized query string (с '?'),
-                    напр. "/api/v5/trade/order" или
+Where:
+  - timestamp     — ISO8601 in UTC with milliseconds and 'Z' suffix,
+                    e.g. "2026-05-15T16:18:00.123Z".
+  - method        — UPPER-CASE HTTP method ("GET" / "POST").
+  - requestPath   — URL.Path plus canonicalized query string (with '?'),
+                    e.g. "/api/v5/trade/order" or
                     "/api/v5/market/books?instId=BTC-USDT-SWAP&sz=20".
-  - body          — тело JSON для POST / пустая строка для GET.
+  - body          — JSON body for POST / empty string for GET.
 
-Те же 4 заголовка OK-ACCESS-KEY / SIGN / TIMESTAMP / PASSPHRASE отправляются
-по подписанным REST-запросам и аналогично — в payload login-сообщения WS.
+The same 4 headers OK-ACCESS-KEY / SIGN / TIMESTAMP / PASSPHRASE are sent
+with signed REST requests and equivalently in the WS login message payload.
 
-ОСНОВНЫЕ ФУНКЦИИ:
-  - NewSigner(apiKey, secretKey, passphrase): фабрика Signer'а; пустой ключ
-    создаёт `signer.enabled = false`, в этом случае подпись отдельных запросов
-    блокируется (см. SignerError).
+MAIN FUNCTIONS:
+  - NewSigner(apiKey, secretKey, passphrase): Signer factory; an empty key
+    creates `signer.enabled = false`, in which case signing individual requests
+    is blocked (see SignerError).
   - (Signer).Sign(timestamp, method, requestPath, body) (signature, error):
-    собственно подпись.
-  - (Signer).IsoTimestamp(now): возвращает timestamp в формате OKX.
-  - (Signer).Credentials(): возвращает (apiKey, passphrase, enabled). Secret
-    наружу НЕ отдаётся.
+    the actual signing.
+  - (Signer).IsoTimestamp(now): returns the timestamp in OKX format.
+  - (Signer).Credentials(): returns (apiKey, passphrase, enabled). Secret is
+    NOT exposed.
 
-ВАЖНО ПО БЕЗОПАСНОСТИ:
-  - SecretKey хранится внутри Signer и не сериализуется. В строковом
-    представлении (для логов/паник) Signer возвращает редактированный вывод.
-  - Логировать значения преподписи и тело запроса не следует — это утечка.
+SECURITY NOTES:
+  - SecretKey is stored inside Signer and is not serialized. The string
+    representation (for logs/panics) returns a redacted output.
+  - Do not log pre-hash values or request bodies — this is a secret leak.
 
-ЗАВИСИМОСТИ:
-- crypto/hmac, crypto/sha256: подпись.
-- encoding/base64:            кодирование.
-- errors, fmt:                ошибки.
-- time:                       формат timestamp.
+DEPENDENCIES:
+- crypto/hmac, crypto/sha256: signing.
+- encoding/base64:            encoding.
+- errors, fmt:                errors.
+- time:                       timestamp formatting.
 */
 
 package auth
@@ -53,11 +53,11 @@ import (
 	"time"
 )
 
-// ErrSignerDisabled возвращается, когда вызывается Sign на пустых credentials.
+// ErrSignerDisabled is returned when Sign is called with empty credentials.
 var ErrSignerDisabled = errors.New("auth: signer is disabled (api key/secret/passphrase not configured)")
 
-// Signer — компактный subj подписи запросов OKX. Безопасен для параллельного
-// использования: внутри только read-only поля.
+// Signer — compact OKX request signer. Safe for concurrent use: contains
+// only read-only fields.
 type Signer struct {
 	apiKey     string
 	secretKey  []byte
@@ -65,9 +65,9 @@ type Signer struct {
 	enabled    bool
 }
 
-// NewSigner создаёт Signer. Если хотя бы одно из полей пустое — signer
-// помечается disabled (Sign будет возвращать ErrSignerDisabled). Это позволяет
-// тому же Client'у обслуживать публичные эндпоинты OKX без credentials.
+// NewSigner creates a Signer. If any field is empty, the signer is marked
+// disabled (Sign will return ErrSignerDisabled). This allows the same Client
+// to serve public OKX endpoints without credentials.
 func NewSigner(apiKey, secretKey, passphrase string) *Signer {
 	var enabled bool = apiKey != "" && secretKey != "" && passphrase != ""
 	return &Signer{
@@ -78,10 +78,10 @@ func NewSigner(apiKey, secretKey, passphrase string) *Signer {
 	}
 }
 
-// Enabled возвращает true, если signer готов подписывать запросы.
+// Enabled returns true if the signer is ready to sign requests.
 func (s *Signer) Enabled() bool { return s != nil && s.enabled }
 
-// APIKey возвращает api key (для заголовка OK-ACCESS-KEY).
+// APIKey returns the API key (for the OK-ACCESS-KEY header).
 func (s *Signer) APIKey() string {
 	if s == nil {
 		return ""
@@ -89,7 +89,7 @@ func (s *Signer) APIKey() string {
 	return s.apiKey
 }
 
-// Passphrase возвращает passphrase (для заголовка OK-ACCESS-PASSPHRASE).
+// Passphrase returns the passphrase (for the OK-ACCESS-PASSPHRASE header).
 func (s *Signer) Passphrase() string {
 	if s == nil {
 		return ""
@@ -98,19 +98,19 @@ func (s *Signer) Passphrase() string {
 }
 
 /*
-Sign возвращает base64(HMAC_SHA256(secret, prehash)) согласно спецификации
-OKX v5. Формат preHash:
+Sign returns base64(HMAC_SHA256(secret, prehash)) per OKX v5 specification.
+preHash format:
 
 	timestamp + method + requestPath + body
 
-Параметры:
-  - timestamp:   ISO8601 в UTC, см. IsoTimestamp.
-  - method:      HTTP-метод в UPPER-CASE, "GET" / "POST" / "PUT" / "DELETE".
-  - requestPath: путь относительно домена, начинается с '/', включает '?...'
-                 для GET-запросов (точно та же query-строка, что попадёт в URL).
-  - body:        тело JSON для POST/PUT; пустая строка для GET/DELETE без тела.
+Parameters:
+  - timestamp:   ISO8601 in UTC, see IsoTimestamp.
+  - method:      UPPER-CASE HTTP method, "GET" / "POST" / "PUT" / "DELETE".
+  - requestPath: path relative to the domain, starts with '/', includes '?...'
+                 for GET requests (exactly the same query string that goes in the URL).
+  - body:        JSON body for POST/PUT; empty string for GET/DELETE without a body.
 
-Возвращает base64-строку подписи или ErrSignerDisabled, если signer выключен.
+Returns the base64 signature string or ErrSignerDisabled if the signer is disabled.
 */
 func (s *Signer) Sign(timestamp, method, requestPath, body string) (string, error) {
 	if !s.Enabled() {
@@ -131,8 +131,8 @@ func (s *Signer) Sign(timestamp, method, requestPath, body string) (string, erro
 	return base64.StdEncoding.EncodeToString(digest), nil
 }
 
-// IsoTimestamp форматирует now в формат OKX: "2006-01-02T15:04:05.000Z" в UTC.
-// Если now zero — берётся time.Now().
+// IsoTimestamp formats now in OKX format: "2006-01-02T15:04:05.000Z" in UTC.
+// If now is zero, time.Now() is used.
 func (s *Signer) IsoTimestamp(now time.Time) string {
 	if now.IsZero() {
 		now = time.Now()
@@ -140,7 +140,7 @@ func (s *Signer) IsoTimestamp(now time.Time) string {
 	return now.UTC().Format("2006-01-02T15:04:05.000Z")
 }
 
-// String возвращает безопасное для логов представление Signer'а — без секретов.
+// String returns a log-safe representation of the Signer — without secrets.
 func (s *Signer) String() string {
 	if s == nil || !s.enabled {
 		return "auth.Signer{disabled}"
@@ -148,8 +148,8 @@ func (s *Signer) String() string {
 	return "auth.Signer{enabled, apiKey=" + redact(s.apiKey) + "}"
 }
 
-// redact превращает строку в "abcd…wxyz" — первые/последние 4 символа.
-// Используется только для логов.
+// redact turns a string into "abcd…wxyz" — first/last 4 characters.
+// Used for logging only.
 func redact(s string) string {
 	if len(s) <= 8 {
 		return "***"

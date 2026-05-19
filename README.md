@@ -1,102 +1,101 @@
 # go-okx
 
-Высокопроизводительный Go-SDK для биржи **OKX** (REST v5 + WebSocket v5), ориентированный на HFT/алготрейдинг.
+High-performance Go SDK for the **OKX** exchange (REST v5 + WebSocket v5), targeting HFT/algorithmic trading.
 
 Module path: `github.com/tonymontanov/go-okx/v2`
 
-## Статус
+## Status
 
-| Модуль | Статус | Покрытие |
+| Module | Status | Coverage |
 | --- | --- | --- |
-| M0: каркас, типы, errors, logger | ✅ | — |
-| M1: REST core (sign, transport, errors, rate-limit headers) | ✅ | unit-тесты подписи + codec |
-| M1: swap.Trading (Create / Modify / Cancel + Batch*, CancelAll, CancelForgotten) | ✅ | contract-тесты |
-| M1: swap.Account (Positions, OpenOrders, ClosePosition, SetLeverage, SetPositionMode) | ✅ | contract-тесты |
-| M1: swap.MarketData (SymbolInfo, OrderBook snapshot, HistoricalCandles) | ✅ | contract-тесты |
-| M2: orderbook.Engine (snapshot+delta+seqId+CRC32 checksum+resync) | ✅ | 9 unit-тестов |
-| M3: internal/ws.Conn (connect/login/ping/reconnect+backoff/resubscribe/dispatch) | ✅ | 6 ws-тестов |
-| M3: swap.Stream — WebSocket-подписки (Watch*) | ✅ | 9 методов: Orderbook/Spread/Mark/Index/Last/AggTrades/Position/OpenOrders/**Account** |
-| M3: метрики (Counter/Add/Inc) — `okx_ws_*_total` | ✅ | — |
-| M5: contract-тесты на JSON-фикстурах OKX | ✅ | 13 кейсов в `swap/contract_test.go` |
-| M6: примеры | ✅ | `examples/orderbook-watcher`, `examples/simple-trade` |
-| **A: Demo-mode** (`Config.Demo` → `x-simulated-trading: 1` + wspap WS) | ✅ | unit + интеграционный |
-| **A: Account.GetBalance** (`/api/v5/account/balance`) | ✅ | contract-тесты |
-| **A: Stream.WatchAccount** (private канал `account`) | ✅ | mock-WS integration |
+| M0: scaffolding, types, errors, logger | ✅ | — |
+| M1: REST core (sign, transport, errors, rate-limit headers) | ✅ | unit tests for signing + codec |
+| M1: swap.Trading (Create / Modify / Cancel + Batch*, CancelAll, CancelForgotten) | ✅ | contract tests |
+| M1: swap.Account (Positions, OpenOrders, ClosePosition, SetLeverage, SetPositionMode) | ✅ | contract tests |
+| M1: swap.MarketData (SymbolInfo, OrderBook snapshot, HistoricalCandles) | ✅ | contract tests |
+| M2: orderbook.Engine (snapshot+delta+seqId+CRC32 checksum+resync) | ✅ | 9 unit tests |
+| M3: internal/ws.Conn (connect/login/ping/reconnect+backoff/resubscribe/dispatch) | ✅ | 6 ws tests |
+| M3: swap.Stream — WebSocket subscriptions (Watch*) | ✅ | 9 methods: Orderbook/Spread/Mark/Index/Last/AggTrades/Position/OpenOrders/**Account** |
+| M3: metrics (Counter/Add/Inc) — `okx_ws_*_total` | ✅ | — |
+| M5: contract tests on OKX JSON fixtures | ✅ | 13 cases in `swap/contract_test.go` |
+| M6: examples | ✅ | `examples/orderbook-watcher`, `examples/simple-trade` |
+| **A: Demo mode** (`Config.Demo` → `x-simulated-trading: 1` + wspap WS) | ✅ | unit + integration |
+| **A: Account.GetBalance** (`/api/v5/account/balance`) | ✅ | contract tests |
+| **A: Stream.WatchAccount** (private channel `account`) | ✅ | mock-WS integration |
 
-В v1 поддержан **только профиль SWAP** (USD-M Perpetual, `instType=SWAP`).
-Профиль SPOT — отдельная итерация.
+v1 supports the **SWAP profile only** (USD-M Perpetual, `instType=SWAP`).
+SPOT profile is a separate iteration.
 
-## Зависимости
+## Dependencies
 
 ```
-github.com/json-iterator/go      v1.1.12   // быстрый JSON в hot-path
-github.com/shopspring/decimal    v1.4.0    // точные цены/количества
-github.com/gorilla/websocket     v1.5.3    // WS-транспорт
+github.com/json-iterator/go      v1.1.12   // fast JSON in hot-path
+github.com/shopspring/decimal    v1.4.0    // precise prices/quantities
+github.com/gorilla/websocket     v1.5.3    // WS transport
 ```
 
-## Структура
+## Structure
 
 ```
 go-okx/
-  client.go / config.go / errors.go / logger.go / metrics.go   // публичный корневой API
+  client.go / config.go / errors.go / logger.go / metrics.go   // public root API
   swap/
     client.go, trading.go, account.go, market.go, stream.go
-    contract_test.go                                  // contract-тесты на JSON OKX
-    types/                                            // доменные структуры SWAP
+    contract_test.go                                  // contract tests on OKX JSON
+    types/                                            // SWAP domain structs
   orderbook/
     engine.go                                         // snapshot+delta+CRC32 engine
   internal/
-    auth/      — HMAC-SHA256 подпись OKX
+    auth/      — HMAC-SHA256 signing for OKX
     codec/     — jsoniter + helpers ParseDecimal/Int64
-    okxerr/    — тип Error, категории, MapOKXCode/MapHTTPStatus
-    okxlog/    — интерфейс Logger + Field/NoopLogger
-    okxmet/    — интерфейс CounterFactory/Counter (Prometheus-shape)
-    rest/      — низкоуровневый HTTP-клиент, обёртка {code, msg, data}
+    okxerr/    — Error type, categories, MapOKXCode/MapHTTPStatus
+    okxlog/    — Logger interface + Field/NoopLogger
+    okxmet/    — CounterFactory/Counter interface (Prometheus-shape)
+    rest/      — low-level HTTP client, {code, msg, data} wrapper
     ws/        — WS Conn: connect/login/reconnect+jitter/ping/resubscribe/dispatch
   examples/
-    orderbook-watcher/  — public books → локальный стакан с CRC32 + best bid/ask
-    simple-trade/       — place / modify / cancel лимитного ордера
+    orderbook-watcher/  — public books → local order book with CRC32 + best bid/ask
+    simple-trade/       — place / modify / cancel a limit order
 ```
 
-## Архитектура (кратко)
+## Architecture (brief)
 
-Variant B из ТЗ §7: пользователю выдаётся «толстый» доменный клиент по
-профилю (`swap.Client`), у которого есть саб-клиенты:
+Variant B: the user receives a "fat" domain client per profile (`swap.Client`) with sub-clients:
 
 - `Trading()`    — Create/Modify/Cancel/Batch*/CancelAll/CancelForgotten.
 - `Account()`    — **Balance**/Positions/OpenOrders/ClosePosition/SetLeverage/SetPositionMode.
 - `MarketData()` — SymbolInfo/OrderBook/HistoricalCandles.
 - `Stream()`     — Watch* (WebSocket; M3).
 
-Низкоуровневые сервисы (`internal/rest`, `internal/ws`, `internal/auth`) скрыты
-от пользователя и совместно используются всеми саб-клиентами.
+Low-level services (`internal/rest`, `internal/ws`, `internal/auth`) are hidden from the user
+and shared across all sub-clients.
 
-Ошибки SDK — единый тип `*okx.Error` с полем `Kind` (Network/RateLimit/Auth/
-InvalidRequest/Exchange/Unknown). Категория мапится из биржевого кода OKX
-(`MapOKXCode`) или HTTP-статуса (`MapHTTPStatus`).
+SDK errors use a single type `*okx.Error` with a `Kind` field (Network/RateLimit/Auth/
+InvalidRequest/Exchange/Unknown). The category is mapped from the OKX exchange code
+(`MapOKXCode`) or HTTP status (`MapHTTPStatus`).
 
-## Demo-режим (paper-trading)
+## Demo mode (paper trading)
 
-Для проверки интеграции без реальных средств включите `Config.Demo`:
+To test integration without real funds, enable `Config.Demo`:
 
 ```go
 var cfg okx.Config = okx.DefaultConfig()
-cfg.Demo = true                    // ← всё, что нужно
-cfg.APIKey = "<DEMO_API_KEY>"      // создайте отдельно: Profile → Demo Trading → API
+cfg.Demo = true                    // ← that's all
+cfg.APIKey = "<DEMO_API_KEY>"      // create separately: Profile → Demo Trading → API
 cfg.SecretKey = "<DEMO_SECRET>"
 cfg.Passphrase = "<DEMO_PASSPHRASE>"
 ```
 
-Что произойдёт автоматически:
+What happens automatically:
 
-| Слой | Эффект |
+| Layer | Effect |
 |---|---|
-| REST | ко всем запросам добавляется заголовок `x-simulated-trading: 1` (URL остаётся production — отличает только заголовок). |
-| WebSocket | `wss://ws.okx.com:8443/...` заменяется на `wss://wspap.okx.com:8443/...` для public/private/business endpoint'ов. Если вы явно задали `cfg.WS.PublicURL` / `PrivateURL`, SDK его НЕ трогает. |
-| Ключи | demo и prod ключи **не совместимы** — на бирже их выпускают отдельно. |
+| REST | The header `x-simulated-trading: 1` is added to every request (URL stays production — only the header differs). |
+| WebSocket | `wss://ws.okx.com:8443/...` is replaced with `wss://wspap.okx.com:8443/...` for public/private/business endpoints. If `cfg.WS.PublicURL` / `PrivateURL` are set explicitly, the SDK leaves them unchanged. |
+| Keys | Demo and prod keys are **not interchangeable** — they are issued separately on the exchange. |
 
-Контракт API между demo и prod на стороне OKX одинаковый — поэтому весь код
-SDK работает без изменений; меняется только этот один флаг.
+The API contract between demo and prod on the OKX side is identical — all SDK code works
+without changes; only this one flag is toggled.
 
 ## Quickstart
 
@@ -163,40 +162,40 @@ func main() {
 
 ```go
 var bal swaptypes.Balance
-bal, err = sw.Account().GetBalance(ctx)               // все валюты
-bal, err = sw.Account().GetBalance(ctx, "USDT", "BTC") // фильтр
+bal, err = sw.Account().GetBalance(ctx)               // all currencies
+bal, err = sw.Account().GetBalance(ctx, "USDT", "BTC") // filtered
 ```
 
-Возвращает агрегированный `types.Balance` с top-level (TotalEquityUSD,
-AdjustedEquityUSD, MarginRatio, NotionalUSD и т.д.) и `Details []BalanceDetail`
-per-currency (Equity, AvailableEquity, FrozenBalance, UPL и т.п.). Тот же тип
-используется в `Stream().WatchAccount` — на старте делаешь REST-snapshot, далее
-живёшь на push'ах.
+Returns an aggregated `types.Balance` with top-level fields (TotalEquityUSD,
+AdjustedEquityUSD, MarginRatio, NotionalUSD, etc.) and `Details []BalanceDetail`
+per currency (Equity, AvailableEquity, FrozenBalance, UPL, etc.). The same type
+is used in `Stream().WatchAccount` — take a REST snapshot on startup, then
+rely on pushes.
 
 ## Orderbook engine
 
 ```go
 var eng *orderbook.Engine = orderbook.NewEngine("BTC-USDT-SWAP", 400, 25)
 
-// 1. снапшот (REST или WS)
+// 1. snapshot (REST or WS)
 eng.ApplySnapshot(orderbook.Snapshot{ /* ... */ })
 
-// 2. поток дельт из WS
+// 2. delta stream from WS
 var res orderbook.ApplyResult = eng.ApplyUpdate(orderbook.Update{ /* ... */ })
 if res.Gap != orderbook.GapNone {
-    // resync: запросить снапшот заново
+    // resync: request a new snapshot
 }
 
 var bids, asks = eng.TopLevels(10)
 ```
 
-Подробнее об алгоритме — см. `orderbook/engine.go`.
+For details on the algorithm see `orderbook/engine.go`.
 
-## WebSocket-стримы
+## WebSocket streams
 
-Все `Watch*` методы используют один public-conn и один private-conn на весь
-`*swap.Client`. Reconnect, backoff с jitter, resubscribe и login (для private)
-прозрачны для пользователя.
+All `Watch*` methods share a single public-conn and a single private-conn per
+`*swap.Client`. Reconnect, backoff with jitter, resubscribe, and login (for private)
+are transparent to the caller.
 
 ```go
 err := sw.Stream().WatchOrderbook(ctx, "BTC-USDT-SWAP", 5,
@@ -209,21 +208,21 @@ err := sw.Stream().WatchOrderbook(ctx, "BTC-USDT-SWAP", 5,
 )
 ```
 
-Доступные подписки:
+Available subscriptions:
 
-| Метод | OKX-канал | Назначение |
+| Method | OKX channel | Purpose |
 | --- | --- | --- |
-| `WatchOrderbook` | `books` | локальный стакан с CRC32-валидацией |
-| `WatchSpread` | `bbo-tbt` | best bid/ask с размерами |
+| `WatchOrderbook` | `books` | local order book with CRC32 validation |
+| `WatchSpread` | `bbo-tbt` | best bid/ask with sizes |
 | `WatchMarkPrice` | `mark-price` | mark price (float64, ts) |
 | `WatchIndexPrice` | `index-tickers` | index price |
-| `WatchLastPrice` | `trades` | последняя цена сделки |
-| `WatchAggTrades` | `trades` | сделки целиком (price+size+side+ts) |
-| `WatchPosition` | `positions` (private) | обновления позиции |
-| `WatchOpenOrders` | `orders` (private) | обновления ордеров |
-| `WatchAccount` | `account` (private) | полный снимок баланса unified-account |
+| `WatchLastPrice` | `trades` | last trade price |
+| `WatchAggTrades` | `trades` | full trades (price+size+side+ts) |
+| `WatchPosition` | `positions` (private) | position updates |
+| `WatchOpenOrders` | `orders` (private) | order updates |
+| `WatchAccount` | `account` (private) | full unified-account balance snapshot |
 
-Счётчики (через `okx.Config.Metrics`):
+Counters (via `okx.Config.Metrics`):
 
 ```
 okx_ws_messages_received_total
@@ -233,32 +232,32 @@ okx_ws_subscriptions_total
 okx_ws_ping_failed_total
 ```
 
-По умолчанию — `NoopMetrics()`; подключите свою фабрику для интеграции с
-Prometheus/любой другой системой.
+Default is `NoopMetrics()`; plug in your own factory to integrate with
+Prometheus or any other system.
 
-## Примеры
+## Examples
 
-| Пример | Что делает | Ключи | OKX_ALLOW_LIVE |
+| Example | What it does | Keys | OKX_ALLOW_LIVE |
 |---|---|---|---|
-| `examples/market-data` | symbol-info, order-book snapshot, candles | нет | нет |
-| `examples/public-streams` | bbo-tbt, mark-price, index, last, agg trades | нет | нет |
-| `examples/orderbook-watcher` | public books + локальный стакан с CRC32 | нет | нет |
-| `examples/account-info` | symbol-info, position, open orders | да | нет |
-| `examples/simple-trade` | place → modify → cancel лимитного ордера далеко от рынка | да | **да** |
-| `examples/inventory-tracker` | private streams + market buy + close position (одноразовый смоук) | да | **да** |
-| `examples/inventory-monitor` | бесконечный мониторинг позиции и ордеров (до Ctrl-C) | да | нет |
+| `examples/market-data` | symbol-info, order-book snapshot, candles | no | no |
+| `examples/public-streams` | bbo-tbt, mark-price, index, last, agg trades | no | no |
+| `examples/orderbook-watcher` | public books + local order book with CRC32 | no | no |
+| `examples/account-info` | symbol-info, position, open orders | yes | no |
+| `examples/simple-trade` | place → modify → cancel a limit order far from market | yes | **yes** |
+| `examples/inventory-tracker` | private streams + market buy + close position (one-shot smoke) | yes | **yes** |
+| `examples/inventory-monitor` | continuous position and order monitoring (until Ctrl-C) | yes | no |
 
-### Как запускать
+### How to run
 
-Один раз создай `.env` из шаблона и пропиши ключи:
+Create `.env` from the template once and fill in the keys:
 
 ```bash
 cp .env.example .env
-# открой .env, заполни OKX_API_KEY / OKX_SECRET_KEY / OKX_PASSPHRASE
-# для торговых примеров поставь OKX_ALLOW_LIVE=1
+# open .env, fill in OKX_API_KEY / OKX_SECRET_KEY / OKX_PASSPHRASE
+# set OKX_ALLOW_LIVE=1 for trading examples
 ```
 
-Любой пример запускается через wrapper, который читает `.env`:
+Any example can be run via the wrapper that reads `.env`:
 
 ```bash
 ./scripts/run.sh ./examples/market-data
@@ -268,36 +267,36 @@ cp .env.example .env
 ./scripts/run.sh ./examples/inventory-tracker
 ```
 
-Без `.env` тоже можно — пример без ключей просто игнорирует пустые переменные:
+Without `.env` it also works — examples without keys simply ignore empty variables:
 
 ```bash
 go run ./examples/market-data
 ```
 
-### Дополнительные переменные
+### Additional variables
 
-| Переменная | Где используется | По умолчанию |
+| Variable | Used in | Default |
 |---|---|---|
 | `OKX_INSTRUMENT` | account-info, market-data, public-streams, inventory-tracker | `BTC-USDT-SWAP` |
-| `OKX_SIZE` | inventory-tracker | `1` (контракт) |
-| `OKX_HOLD_SECONDS` | inventory-tracker | `5` секунд между BUY и close |
+| `OKX_SIZE` | inventory-tracker | `1` (contract) |
+| `OKX_HOLD_SECONDS` | inventory-tracker | `5` seconds between BUY and close |
 
-Пример «дешёвого» live-теста (~1-2 USDT на спред + комиссии):
+Example of a "cheap" live test (~1-2 USDT on spread + fees):
 
 ```bash
 OKX_INSTRUMENT=DOGE-USDT-SWAP OKX_SIZE=1 \
   ./scripts/run.sh ./examples/inventory-tracker
 ```
 
-## Codestyle
+## Code style
 
-- Файловые заголовки на русском (как в `market-making-desk-core`).
-- Явное объявление переменных через `var name type = ...`.
-- `camelCase` для локальных идентификаторов, `PascalCase` для экспортируемых.
-- `jsoniter` через `internal/codec` для hot-path; `encoding/json` напрямую не используется.
-- Все методы принимают `context.Context` первым параметром; `context.Background()`
-  внутри методов с `ctx` запрещён.
+- File headers in English.
+- Explicit variable declarations via `var name type = ...`.
+- `camelCase` for local identifiers, `PascalCase` for exported ones.
+- `jsoniter` via `internal/codec` for hot-path; `encoding/json` is not used directly.
+- All methods take `context.Context` as the first parameter; `context.Background()`
+  inside methods that already have `ctx` is forbidden.
 
-## Лицензия
+## License
 
-См. `LICENSE`.
+See `LICENSE`.

@@ -1,136 +1,132 @@
 /*
-ФАЙЛ: rate-limit-event.go
+FILE: rate-limit-event.go
 
-ОПИСАНИЕ:
-Публичный тип RateLimitEvent, который SDK передаёт подписчикам через
-okx.Config.RateLimitEventObserver. Добавлен в v2.2.0 как замена/расширение
-старого RateLimitObserver (см. config.go).
+DESCRIPTION:
+Public RateLimitEvent type that the SDK delivers to subscribers via
+okx.Config.RateLimitEventObserver. Added in v2.2.0 as a replacement/extension
+of the old RateLimitObserver (see config.go).
 
-ЗАЧЕМ:
-OKX rate-limit модель имеет три измерения, которые НЕ могут быть выведены
-только из (endpoint, headers):
+WHY:
+The OKX rate-limit model has three dimensions that CANNOT be derived from
+(endpoint, headers) alone:
 
- 1. Единица учёта на batch-эндпоинтах — ORDER, а не REQUEST. Один POST
-    /api/v5/trade/batch-orders на 20 ордеров стоит 20 единиц из бюджета
-    "300 orders per 2s", а не 1 единицу из несуществующего "300 requests
-    per 2s". Без OrderCount внешний счётчик занижает usage в 1-20x.
- 2. Trading-лимиты per (User ID + Instrument ID), а не глобально per-UID.
-    У каждого символа свой бюджет. Без Symbols подписчик вынужден
-    агрегировать по endpoint'у и блокировать один символ из-за нагрузки
-    на другой.
- 3. Sub-account-level лимит "1000 new+amend orders / 2s" (error 50061)
-    считает только POST в категориях Place и Amend, не Cancel и не Query.
-    Без Category подписчик не может построить эту плоскость.
+ 1. The accounting unit on batch endpoints is an ORDER, not a REQUEST. One POST
+    /api/v5/trade/batch-orders for 20 orders costs 20 units from the
+    "300 orders per 2s" budget, not 1 unit from the non-existent "300 requests
+    per 2s". Without OrderCount an external counter underestimates usage by 1-20x.
+ 2. Trading limits are per (User ID + Instrument ID), not globally per-UID.
+    Each symbol has its own budget. Without Symbols the subscriber is forced to
+    aggregate by endpoint and block one symbol because of load on another.
+ 3. The sub-account-level limit "1000 new+amend orders / 2s" (error 50061)
+    counts only POST in Place and Amend categories, not Cancel or Query.
+    Without Category the subscriber cannot model this dimension.
 
-Этот тип — единственный официальный источник истины для всех трёх
-измерений. SDK заполняет его на стороне доменных методов (swap/trading.go,
-swap/account.go), где известны и instId-ы, и реальное число ордеров в теле
-запроса.
+This type is the single official source of truth for all three dimensions.
+The SDK populates it in the domain methods (swap/trading.go, swap/account.go),
+where both instIds and the actual number of orders in the request body are known.
 
-ЗАВИСИМОСТИ:
-Никаких — это plain data struct.
+DEPENDENCIES:
+None — this is a plain data struct.
 */
 
 package okx
 
-// RateLimitCategory — классификация REST-вызова с точки зрения OKX
-// rate-limit модели. Используется внешними rate-limiter'ами для разнесения
-// usage'а по разным плоскостям лимитов (per-endpoint, per-symbol,
-// sub-account-level).
+// RateLimitCategory — REST call classification from the OKX rate-limit model
+// perspective. Used by external rate-limiters to distribute usage across
+// different limit planes (per-endpoint, per-symbol, sub-account-level).
 type RateLimitCategory string
 
 const (
-	// RateLimitCategoryPlace — создание ордера(ов).
+	// RateLimitCategoryPlace — order creation.
 	// Endpoints: /api/v5/trade/order, /api/v5/trade/batch-orders,
 	// /api/v5/trade/close-position.
-	// Учитывается в sub-account 1000 new+amend orders / 2s (error 50061).
+	// Counted in sub-account 1000 new+amend orders / 2s (error 50061).
 	RateLimitCategoryPlace RateLimitCategory = "place"
 
-	// RateLimitCategoryAmend — изменение ордера(ов).
+	// RateLimitCategoryAmend — order modification.
 	// Endpoints: /api/v5/trade/amend-order, /api/v5/trade/amend-batch-orders.
-	// Учитывается в sub-account 1000 new+amend orders / 2s.
+	// Counted in sub-account 1000 new+amend orders / 2s.
 	RateLimitCategoryAmend RateLimitCategory = "amend"
 
-	// RateLimitCategoryCancel — отмена ордера(ов).
+	// RateLimitCategoryCancel — order cancellation.
 	// Endpoints: /api/v5/trade/cancel-order, /api/v5/trade/cancel-batch-orders,
 	// /api/v5/trade/cancel-all-after.
-	// В sub-account 50061 НЕ учитывается (OKX считает только place + amend).
+	// NOT counted in sub-account 50061 (OKX counts only place + amend).
 	RateLimitCategoryCancel RateLimitCategory = "cancel"
 
-	// RateLimitCategoryQuery — приватный GET либо неторговый POST (account
-	// configuration). Per-UID, в sub-account 50061 не входит.
+	// RateLimitCategoryQuery — private GET or non-trading POST (account
+	// configuration). Per-UID, not included in sub-account 50061.
 	// Endpoints: /api/v5/trade/orders-pending, /api/v5/account/*.
 	RateLimitCategoryQuery RateLimitCategory = "query"
 
-	// RateLimitCategoryMarketData — публичный GET (per-IP лимиты).
+	// RateLimitCategoryMarketData — public GET (per-IP limits).
 	// Endpoints: /api/v5/market/*, /api/v5/public/*.
 	RateLimitCategoryMarketData RateLimitCategory = "market"
 
-	// RateLimitCategoryUnknown — fallback для запросов, не покрытых ни
-	// одной из явных категорий (например, внутренние health-check'и).
-	// Внешний rate-limiter может либо игнорировать такие события, либо
-	// засчитывать их консервативно в Query.
+	// RateLimitCategoryUnknown — fallback for requests not covered by any
+	// explicit category (e.g. internal health checks). The external
+	// rate-limiter may either ignore such events or count them conservatively
+	// as Query.
 	RateLimitCategoryUnknown RateLimitCategory = ""
 )
 
-// String возвращает строковое представление категории.
+// String returns the string representation of the category.
 func (c RateLimitCategory) String() string {
 	return string(c)
 }
 
-// RateLimitEvent — структурированное rate-limit событие, которое SDK
-// передаёт подписчикам через okx.Config.RateLimitEventObserver.
+// RateLimitEvent — structured rate-limit event that the SDK delivers to
+// subscribers via okx.Config.RateLimitEventObserver.
 //
-// Все поля заполняются SDK строго после успешного получения HTTP-ответа
-// от OKX (даже если код ответа != 0): observer вызывается ровно один раз
-// на каждый завершённый REST-вызов.
+// All fields are populated by the SDK strictly after a successful HTTP response
+// from OKX (even if the response code != 0): the observer is called exactly
+// once per completed REST call.
 type RateLimitEvent struct {
-	// Endpoint — путь запроса (например, "/api/v5/trade/batch-orders").
-	// Никогда не пустой. Этот же путь будет в OKX docs §Rate Limits.
+	// Endpoint — request path (e.g. "/api/v5/trade/batch-orders").
+	// Never empty. The same path appears in OKX docs §Rate Limits.
 	Endpoint string
 
-	// Method — HTTP-метод запроса в верхнем регистре (GET / POST / ...).
+	// Method — HTTP request method in upper case (GET / POST / ...).
 	Method string
 
-	// Headers — rate-limit заголовки, которые OKX вернул в ответе:
-	// ratelimit-limit / ratelimit-remaining / ratelimit-reset и их
-	// x-ratelimit-* варианты. На момент v2.2.0 OKX REST API эти заголовки
-	// не возвращает — map будет пустым, но всегда non-nil. SDK уже
-	// прокидывает их сразу, как только OKX начнёт отдавать.
+	// Headers — rate-limit headers returned by OKX in the response:
+	// ratelimit-limit / ratelimit-remaining / ratelimit-reset and their
+	// x-ratelimit-* variants. As of v2.2.0 the OKX REST API does not return
+	// these headers — the map will be empty but always non-nil. The SDK
+	// already forwards them as soon as OKX starts sending them.
 	Headers map[string]string
 
-	// OrderCount — сколько ордеров СОЗДАНО/ИЗМЕНЕНО/ОТМЕНЕНО этим запросом:
-	//   - 1 для /trade/order, /trade/amend-order, /trade/cancel-order,
+	// OrderCount — number of orders CREATED/AMENDED/CANCELLED by this request:
+	//   - 1 for /trade/order, /trade/amend-order, /trade/cancel-order,
 	//     /trade/close-position;
-	//   - len(orders) для /trade/batch-orders, /trade/amend-batch-orders,
+	//   - len(orders) for /trade/batch-orders, /trade/amend-batch-orders,
 	//     /trade/cancel-batch-orders;
-	//   - 0 для не-trading запросов (account, market, public).
+	//   - 0 for non-trading requests (account, market, public).
 	//
-	// Это число выражает сколько единиц бюджета OKX списал/спишет с лимита
-	// "300 orders per 2s" для соответствующего endpoint'а. Использовать
-	// вместо счётчика запросов (которым раньше пользовался внешний
-	// rate-limiter): на batch'ах он недосчитывает usage в 1-20x.
+	// This number expresses how many budget units OKX has charged/will charge
+	// against the "300 orders per 2s" limit for the corresponding endpoint.
+	// Use instead of request counter (as external rate-limiters used to):
+	// on batches a request counter underestimates usage by 1-20x.
 	OrderCount int
 
-	// Symbols — отсортированный список уникальных OKX InstID, к которым
-	// относится запрос:
-	//   - 1 элемент для single trading method'ов (InstID ордера);
-	//   - 1+ для batch (set unique InstID всех ордеров в батче);
-	//   - 1 для query-методов с обязательным instId параметром
+	// Symbols — sorted list of unique OKX InstIDs the request relates to:
+	//   - 1 element for single trading methods (order InstID);
+	//   - 1+ for batch (unique InstID set of all orders in the batch);
+	//   - 1 for query methods with a required instId parameter
 	//     (GetPositions, GetOpenOrders, GetSymbolInfo, ...);
-	//   - пустой ([]string{}, не nil) для общих запросов без instId
-	//     (GetBalance без ccy, public/instruments list).
+	//   - empty ([]string{}, not nil) for general requests without instId
+	//     (GetBalance without ccy, public/instruments list).
 	//
-	// OKX trading лимиты per (UID + InstId), поэтому подписчик должен
-	// списывать usage в state'ы соответствующих символов, а не агрегировать
-	// по endpoint'у. Аккуратное использование этого поля устраняет
-	// эффект "один горячий символ блокирует остальные".
+	// OKX trading limits are per (UID + InstId), so the subscriber must
+	// debit usage to the state of the corresponding symbols, not aggregate
+	// by endpoint. Careful use of this field eliminates the
+	// "one hot symbol blocks others" effect.
 	Symbols []string
 
-	// Category — классификация по rate-limit модели OKX. Используется
-	// внешним rate-limiter'ом для:
-	//   - sub-account-level плоскости (Place + Amend = 1000 / 2s);
-	//   - всегда-разрешать-Cancel политики;
-	//   - правильного выбора окна / лимита для нестандартных endpoints.
+	// Category — classification by the OKX rate-limit model. Used by the
+	// external rate-limiter for:
+	//   - sub-account-level plane (Place + Amend = 1000 / 2s);
+	//   - always-allow-Cancel policy;
+	//   - correct window/limit selection for non-standard endpoints.
 	Category RateLimitCategory
 }

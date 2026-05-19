@@ -1,26 +1,26 @@
 /*
-ФАЙЛ: logger.go
+FILE: logger.go
 
-ОПИСАНИЕ:
-Публичный реэкспорт интерфейса Logger и типизированных Field-фабрик. Сам
-интерфейс/тип живут в internal/okxlog (см. документацию там); здесь —
-type alias и тонкие функции-обёртки.
+DESCRIPTION:
+Public re-export of the Logger interface and typed Field factories. The
+interface/type itself lives in internal/okxlog (see documentation there);
+here — type aliases and thin wrapper functions.
 */
 
 package okx
 
 import "github.com/tonymontanov/go-okx/v2/internal/okxlog"
 
-// Logger — интерфейс логирования SDK. Alias.
+// Logger — SDK logging interface. Alias.
 type Logger = okxlog.Logger
 
-// Field — типизированное поле лога. Alias.
+// Field — typed log field. Alias.
 type Field = okxlog.Field
 
-// FieldKind — дискриминатор Field. Alias.
+// FieldKind — Field discriminator. Alias.
 type FieldKind = okxlog.FieldKind
 
-// Значения FieldKind.
+// FieldKind values.
 const (
 	FieldKindString = okxlog.FieldKindString
 	FieldKindInt    = okxlog.FieldKindInt
@@ -29,10 +29,10 @@ const (
 	FieldKindError  = okxlog.FieldKindError
 )
 
-// NoopLogger возвращает no-op логгер. Используется как default.
+// NoopLogger returns a no-op logger. Used as the default.
 func NoopLogger() Logger { return okxlog.Noop() }
 
-// Str / Int / Float / Bool / Err — фабрики Field.
+// Str / Int / Float / Bool / Err — Field factories.
 func Str(key, value string) Field   { return okxlog.Str(key, value) }
 func Int(key string, v int64) Field { return okxlog.Int(key, v) }
 func Float(key string, v float64) Field {

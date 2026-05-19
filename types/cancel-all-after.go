@@ -1,41 +1,39 @@
 /*
-ФАЙЛ: types/cancel-all-after.go
+FILE: types/cancel-all-after.go
 
-ОПИСАНИЕ:
-CancelAllAfterResult — ответ OKX на POST /api/v5/trade/cancel-all-after.
+DESCRIPTION:
+CancelAllAfterResult — OKX response to POST /api/v5/trade/cancel-all-after.
 
-СЕМАНТИКА (OKX dead-man's switch):
-Endpoint вооружает таймер на стороне биржи: если в течение `timeout`
-секунд клиент не дёрнет endpoint снова, биржа автоматически отменит ВСЕ
-открытые ордера данной учётки.
+SEMANTICS (OKX dead-man's switch):
+The endpoint arms a timer on the exchange side: if the client does not call
+the endpoint again within `timeout` seconds, the exchange automatically cancels
+ALL open orders for the account.
 
-Это safety-механизм для риск-менеджмента: «если мой процесс упал /
-сеть пропала / я завис — пусть биржа сама закроет всё, чем я выставил».
+This is a risk-management safety mechanism: "if my process crashes / the
+network drops / I freeze — let the exchange cancel everything I have open".
 
-Способы использования:
-  - timeout > 0 (10..120с): арм таймера. triggerTime в ответе — время,
-    когда биржа отменит ордера, если не получит refresh;
-  - timeout == 0: disarm. triggerTime в ответе будет пустой.
+Usage modes:
+  - timeout > 0 (10..120s): arm the timer. triggerTime in the response is the
+    time when the exchange will cancel orders if it receives no refresh;
+  - timeout == 0: disarm. triggerTime in the response will be empty.
 
-КАК ПОДДЕРЖИВАТЬ ТАЙМЕР:
-В hot loop стратегии вызывайте CancelAllAfter каждые ~⅓ от timeout
-(например, для timeout=30s — каждые 10s). Это даёт большой запас на
-сетевые задержки.
+HOW TO MAINTAIN THE TIMER:
+Call CancelAllAfter every ~⅓ of timeout in the strategy hot loop
+(e.g. every 10s for timeout=30s). This provides ample headroom for network delays.
 
-ПАРНОСТЬ С MASSCANCEL:
-mass-cancel (Phase 2.1) — синхронный panic-button «отмени всё сейчас».
-cancel-all-after — асинхронный «отмени всё через N секунд, если я не
-обновлю». Используются совместно: arm на старте, mass-cancel или
-disarm на graceful shutdown.
+PAIRING WITH MASS-CANCEL:
+mass-cancel (Phase 2.1) — synchronous panic button "cancel everything now".
+cancel-all-after — asynchronous "cancel everything in N seconds if I don't refresh".
+Used together: arm on startup, mass-cancel or disarm on graceful shutdown.
 */
 
 package types
 
-// CancelAllAfterResult — ответ биржи на cancel-all-after.
+// CancelAllAfterResult — exchange response to cancel-all-after.
 type CancelAllAfterResult struct {
-	// TriggerTimeMs — момент в мс, когда биржа применит cancel-all,
-	// если не получит refresh. 0 для disarm (timeout=0).
+	// TriggerTimeMs — timestamp in ms when the exchange will apply cancel-all
+	// if no refresh is received. 0 for disarm (timeout=0).
 	TriggerTimeMs int64
-	// TsMs — таймштамп ответа сервера в мс.
+	// TsMs — server response timestamp in ms.
 	TsMs int64
 }

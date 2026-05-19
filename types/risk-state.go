@@ -1,46 +1,45 @@
 /*
-ФАЙЛ: types/risk-state.go
+FILE: types/risk-state.go
 
-ОПИСАНИЕ:
-RiskState — текущее состояние риск-движка для аккаунта в режимах
-Portfolio Margin (PM) и Multi-currency Margin (MMR). Показывает, в
-каком ATS (auto-deleveraging) состоянии находится аккаунт и какие
-позиции попадают под ATS-флаг.
+DESCRIPTION:
+RiskState — current state of the risk engine for an account in Portfolio Margin
+(PM) and Multi-currency Margin (MMR) modes. Shows the ATS (auto-deleveraging)
+state of the account and which positions are flagged for ATS.
 
-Маппится из:
+Mapped from:
   - GET /api/v5/account/risk-state
 
-Применяется только для AcctLv == 4 (PortfolioMargin). Для других уровней
-endpoint вернёт пустой результат.
+Applicable only for AcctLv == 4 (PortfolioMargin). For other levels the
+endpoint returns an empty result.
 */
 
 package types
 
 import "github.com/shopspring/decimal"
 
-// RiskState — состояние risk-engine аккаунта.
+// RiskState — account risk-engine state.
 type RiskState struct {
-	// Ts — таймштамп snapshot'а в мс (ts).
+	// Ts — snapshot timestamp in ms (ts).
 	Ts int64
-	// AtsErr — флаг, что ATS включён (atsErr).
+	// AtsErr — flag indicating ATS is active (atsErr).
 	AtsErr bool
-	// CtPos — список contract-позиций с риск-параметрами.
+	// CtPos — list of contract positions with risk parameters.
 	CtPos []RiskPosition
-	// SpotPos — список spot-позиций с риск-параметрами.
+	// SpotPos — list of spot positions with risk parameters.
 	SpotPos []RiskPosition
-	// PendingMgnLiability — суммарная margin-liability по pending ордерам
+	// PendingMgnLiability — total margin liability of pending orders
 	// (pendingMgnLiability).
 	PendingMgnLiability decimal.Decimal
 }
 
-// RiskPosition — одна позиция в risk-state breakdown.
+// RiskPosition — one position in the risk-state breakdown.
 type RiskPosition struct {
-	// InstID — идентификатор инструмента.
+	// InstID — instrument identifier.
 	InstID string
-	// Ccy — валюта (для SPOT).
+	// Ccy — currency (for SPOT).
 	Ccy string
-	// Pos — размер позиции в контрактах/base.
+	// Pos — position size in contracts/base.
 	Pos decimal.Decimal
-	// NotionalUsd — notional значение позиции в USD.
+	// NotionalUsd — notional value of the position in USD.
 	NotionalUsd decimal.Decimal
 }

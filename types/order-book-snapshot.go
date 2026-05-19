@@ -1,27 +1,27 @@
 /*
-ФАЙЛ: types/order-book-snapshot.go
+FILE: types/order-book-snapshot.go
 
-ОПИСАНИЕ:
-Снимок стакана: набор bid/ask уровней + метаинформация о seqId и времени.
-Возвращается REST endpoint'ом GetOrderBook и используется как input для
+DESCRIPTION:
+Order book snapshot: a set of bid/ask levels plus seqId and timestamp metadata.
+Returned by the GetOrderBook REST endpoint and used as input to
 OrderbookEngine.ApplySnapshot.
 
-Формат идентичен для spot и swap (один OKX endpoint /api/v5/market/books,
-отличается только instID — без или с -SWAP суффиксом).
+The format is identical for spot and swap (one OKX endpoint /api/v5/market/books,
+differentiated only by instID — without or with the -SWAP suffix).
 
-ПОЛЯ:
-  - InstID    — инструмент.
-  - Bids      — уровни покупок, отсортированы по убыванию цены.
-  - Asks      — уровни продаж, отсортированы по возрастанию цены.
-  - SeqID     — текущий seqId (для синхронизации с WS-deltas).
-  - PrevSeqID — prevSeqId (полезен при resync).
-  - Checksum  — CRC32 топ-25 уровней (если пришёл со снапшотом WS-канала books).
-  - Ts        — таймштамп OKX (мс).
+FIELDS:
+  - InstID    — instrument.
+  - Bids      — buy levels, sorted in descending price order.
+  - Asks      — sell levels, sorted in ascending price order.
+  - SeqID     — current seqId (for synchronization with WS deltas).
+  - PrevSeqID — prevSeqId (useful during resync).
+  - Checksum  — CRC32 of top-25 levels (present when delivered by the WS books channel snapshot).
+  - Ts        — OKX timestamp (ms).
 */
 
 package types
 
-// OrderBookSnapshot — снапшот стакана для одного инструмента.
+// OrderBookSnapshot — order book snapshot for a single instrument.
 type OrderBookSnapshot struct {
 	InstID    string
 	Bids      []OrderBookLevel

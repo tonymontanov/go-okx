@@ -1,223 +1,223 @@
-# Техническое задание: SDK под одну биржу (single-exchange)
+# Technical Specification: Single-Exchange SDK
 
-**Версия:** 1.0  
-**Дата:** 2025-02  
-**Контекст:** Отдельная SDK на биржу в Go; унификация — в коде деска. Референс стиля API: adshao/go-binance v2.8.9.
-
----
-
-## 1) Overview и цели
-
-**Цель:**  
-Разработать высокопроизводительную Go-SDK для **одной конкретной биржи** (далее — *Биржа*), ориентированную на HFT/алготрейдинг, которая:
-
-- покрывает REST + WebSocket API данной Биржи;
-- даёт удобный, идиоматичный Go-API (в духе adshao/go-binance);
-- обеспечивает корректность orderbook и состояния ордеров/позиций;
-- легко оборачивается в существующий унифицированный интерфейс деска (`ExchangeConnector`), но сама по себе **не является мульти-биржевой абстракцией**.
+**Version:** 1.0  
+**Date:** 2025-02  
+**Context:** A dedicated Go SDK for a single exchange; unification lives in the desk code. API style reference: adshao/go-binance v2.8.9.
 
 ---
 
-## 2) Glossary (термины)
+## 1) Overview and goals
 
-- **SDK**: Go-библиотека для работы с одной Биржей (REST + WS).
-- **REST Client**: компонент SDK, реализующий HTTP-вызовы к REST API Биржи.
-- **WS Client**: компонент SDK, реализующий подключения и подписки к WebSocket API.
-- **Orderbook engine**: часть SDK, которая обеспечивает консистентный стакан (snapshot + delta + seq + gap detection + resync).
-- **Order lifecycle**: полное жизненное состояние ордера — от создания до финального статуса.
-- **ClientOrderId**: клиентский идентификатор ордера, используемый для идемпотентности и маппинга.
-- **Reconcile**: согласование локального состояния с Биржей (REST — source of truth).
-- **Capability** (в контексте одной биржи): поддерживаемые особенности рынков данной Биржи — batch, post-only, position mode и т.п.
+**Goal:**  
+Build a high-performance Go SDK for **one specific exchange** (hereafter — *Exchange*) targeting HFT/algorithmic trading, which:
+
+- covers the REST + WebSocket API of the given Exchange;
+- provides a convenient, idiomatic Go API (in the spirit of adshao/go-binance);
+- ensures correctness of the order book and order/position state;
+- wraps cleanly into the existing unified desk interface (`ExchangeConnector`), but is **not itself a multi-exchange abstraction**.
 
 ---
 
-## 3) Scope v1 (для одной биржи)
+## 2) Glossary
 
-### Биржа и рынки
+- **SDK**: Go library for working with a single Exchange (REST + WS).
+- **REST Client**: SDK component that implements HTTP calls to the Exchange REST API.
+- **WS Client**: SDK component that implements connections and subscriptions to the WebSocket API.
+- **Orderbook engine**: SDK component that maintains a consistent order book (snapshot + delta + seq + gap detection + resync).
+- **Order lifecycle**: the complete state of an order from creation to terminal status.
+- **ClientOrderId**: client-side order identifier used for idempotency and mapping.
+- **Reconcile**: aligning local state with the Exchange (REST — source of truth).
+- **Capability** (in the context of a single exchange): supported market features of the Exchange — batch, post-only, position mode, etc.
 
-- **Биржа:** одна конкретная (например, Binance / OKX / Bybit).
-- **Рынки v1:**
-  - USD-M Perpetual Futures (основной приоритет).
+---
+
+## 3) Scope v1 (single exchange)
+
+### Exchange and markets
+
+- **Exchange:** one specific exchange (e.g. Binance / OKX / Bybit).
+- **Markets v1:**
+  - USD-M Perpetual Futures (primary priority).
   - Spot.
-- Вне v1: inverse-perp, margin, options (при необходимости будут добавлены отдельными итерациями).
+- Out of v1 scope: inverse-perp, margin, options (will be added in separate iterations if needed).
 
-### Охват API v1 (по функциональным областям)
+### API coverage v1 (by functional area)
 
 - **Trading (core):**
-  - CreateOrder (limit/market, TIF: GTC/IOC/FOK,GTX, post-only если есть).
-  - CancelOrder, ModifyOrder (если Биржа поддерживает модификацию).
-  - Batch create/modify/cancel (если Биржа поддерживает).
+  - CreateOrder (limit/market, TIF: GTC/IOC/FOK/GTX, post-only if supported).
+  - CancelOrder, ModifyOrder (if the Exchange supports modification).
+  - Batch create/modify/cancel (if the Exchange supports it).
   - CancelAllOrders, CancelForgottenOrders (TTL).
 - **Account/position:**
   - GetPosition / GetSymbolPosition.
   - GetOpenOrders.
-  - ClosePosition (market close, если применимо).
-  - GetSymbolInfo / ExchangeInfo (фильтры, precision, tickSize и т.п.).
+  - ClosePosition (market close, if applicable).
+  - GetSymbolInfo / ExchangeInfo (filters, precision, tickSize, etc.).
 - **Market data:**
-  - Консистентный orderbook (snapshot + delta + seq + gap detection + resync).
+  - Consistent order book (snapshot + delta + seq + gap detection + resync).
   - WatchSpread / best bid-ask.
   - WatchMarkPrice, WatchLastPrice.
-  - GetHistoricalCandles (например, 1m).
+  - GetHistoricalCandles (e.g. 1m).
 - **Rate limits:**
-  - Интеграция с rate-limit политикой Биржи (инициализация по ExchangeInfo или статике).
+  - Integration with the Exchange rate-limit policy (initialized from ExchangeInfo or static config).
 - **Config:**
-  - Конфигурация SDK для этой Биржи (ключи, base URL, WS URL, таймауты, политики reconnect).
+  - SDK configuration for this Exchange (keys, base URL, WS URL, timeouts, reconnect policies).
 
 ---
 
-## 4) Use cases (для одной биржи)
+## 4) Use cases (single exchange)
 
 ### Trading
 
-- **Создание ордера с ClientOrderId:**
-  - Создать лимит/маркет ордер по символу с заданным ClientOrderId.
-  - Получить OrderInfo с OrderID, ClientOrderId, ценой, объёмом и временем создания.
-- **Пакетное управление ордерами:**
-  - Отправить несколько create/modify/cancel в одном вызове (если поддерживается Биржей).
-  - Обработать частичный успех (часть ордеров принята, часть отклонена).
-- **Глобальная отмена:**
-  - CancelAllOrders(symbol) — гарантировано очищает все активные ордера по символу.
-  - CancelForgottenOrders(symbol, TTL) — отмена «зависших» ордеров старше заданного времени.
+- **Order creation with ClientOrderId:**
+  - Create a limit/market order for a symbol with a given ClientOrderId.
+  - Receive OrderInfo with OrderID, ClientOrderId, price, size, and creation time.
+- **Batch order management:**
+  - Send multiple create/modify/cancel in a single call (if supported by the Exchange).
+  - Handle partial success (some orders accepted, some rejected).
+- **Global cancel:**
+  - CancelAllOrders(symbol) — guaranteed to clear all active orders for the symbol.
+  - CancelForgottenOrders(symbol, TTL) — cancel "stuck" orders older than the given duration.
 
-### Account / позиции
+### Account / positions
 
-- **Получение позиции:**
-  - Текущий размер и средняя цена входа по символу.
-- **Мониторинг позиции:**
-  - Подписка на события изменения позиции (WebSocket, если Биржа поддерживает).
-- **Закрытие позиции:**
-  - Market close текущей позиции (one-shot команда).
+- **Fetching a position:**
+  - Current size and average entry price for a symbol.
+- **Position monitoring:**
+  - Subscribe to position change events (WebSocket, if supported by the Exchange).
+- **Closing a position:**
+  - Market close of the current position (one-shot command).
 
 ### Market data
 
-- **Консистентный стакан:**
-  - Получить snapshot стакана (REST).
-  - Подписаться на поток delta (WS) с seq/lastUpdateId.
-  - Детектировать пропуски (gap), выполнять resync.
-- **Спред и цены:**
-  - Подписка на best bid/ask (спред).
-  - Подписка на mark price, last price.
-- **Исторические данные:**
-  - Получение мощёных 1-минутных свечей за заданный период/количество.
+- **Consistent order book:**
+  - Fetch order book snapshot (REST).
+  - Subscribe to delta stream (WS) with seq/lastUpdateId.
+  - Detect gaps, perform resync.
+- **Spread and prices:**
+  - Subscribe to best bid/ask (spread).
+  - Subscribe to mark price, last price.
+- **Historical data:**
+  - Fetch 1-minute candles for a given period/count.
 
-### Rate limits и операции
+### Rate limits and operations
 
-- **Rate-limit aware вызовы:**
-  - Перед каждым REST-/WS-вызовом проверка/обновление лимитов.
-  - При превышении — контролируемые ошибки/действия (rate limit exceeded).
+- **Rate-limit-aware calls:**
+  - Check/update limits before each REST/WS call.
+  - On exceeded limits — controlled errors/actions (rate limit exceeded).
 
 ---
 
-## 5) Functional requirements (по модулям SDK)
+## 5) Functional requirements (per SDK module)
 
 ### 5.1 REST Client
 
-- **Инициализация:**
-  - Принимает API-ключ/секрет, base URL, опции (таймауты, proxy, user agent).
-- **Методы:**
-  - Typed-сервисы в стиле go-binance (опционально): NewCreateOrderService(), NewCancelOrderService(), NewDepthService() и т.д.
-  - Либо компактный доменный API: CreateOrder(ctx, CreateOrderRequest) (OrderInfo, error), CancelOrder(ctx, CancelOrderRequest) error, GetOpenOrders(ctx, symbol) ([]OrderInfo, error).
-- **Требования:**
-  - Подпись запросов согласно спецификации Биржи.
-  - Парсинг ответов во внутренние типы SDK.
-  - Обработка ошибок (HTTP-уровень, биржевые коды, сетевые ошибки).
+- **Initialization:**
+  - Accepts API key/secret, base URL, options (timeouts, proxy, user agent).
+- **Methods:**
+  - Typed services in the go-binance style (optional): NewCreateOrderService(), NewCancelOrderService(), NewDepthService(), etc.
+  - Or a compact domain API: CreateOrder(ctx, CreateOrderRequest) (OrderInfo, error), CancelOrder(ctx, CancelOrderRequest) error, GetOpenOrders(ctx, symbol) ([]OrderInfo, error).
+- **Requirements:**
+  - Request signing per Exchange specification.
+  - Response parsing into internal SDK types.
+  - Error handling (HTTP level, exchange codes, network errors).
 
 ### 5.2 WebSocket Client
 
-- **Функциональность:**
-  - Управление подключением (connect, reconnect с backoff + jitter).
-  - Подписки на: orderbook deltas, user data (ордера, балансы, позиции), mark/last price, best bid-ask.
+- **Functionality:**
+  - Connection management (connect, reconnect with backoff + jitter).
+  - Subscriptions to: orderbook deltas, user data (orders, balances, positions), mark/last price, best bid-ask.
 - **API:**
-  - Функции вида: WatchOrderbook(ctx, symbol, handler, errHandler), WatchSpread(ctx, symbol, handler, errHandler), WatchPosition(ctx, symbol, handler, errHandler).
-  - Отмена через ctx.Done().
+  - Functions like: WatchOrderbook(ctx, symbol, handler, errHandler), WatchSpread(ctx, symbol, handler, errHandler), WatchPosition(ctx, symbol, handler, errHandler).
+  - Cancellation via ctx.Done().
 
 ### 5.3 Orderbook engine
 
-- **Обязанности:**
-  - Получение snapshot (REST) → инициализация локального стакана.
-  - Применение delta (WS) по seq/lastUpdateId.
-  - Обнаружение gap (пропущенных обновлений): при несовпадении seq — запрос нового snapshot + повторное применение delta.
-  - Валидация: отсутствие отрицательных размеров, сортировка уровней, согласованность bid/ask.
+- **Responsibilities:**
+  - Receive snapshot (REST) → initialize local order book.
+  - Apply delta (WS) by seq/lastUpdateId.
+  - Detect gaps (missed updates): on seq mismatch — request new snapshot + reapply delta.
+  - Validation: no negative sizes, level sorting, bid/ask consistency.
 - **API:**
-  - Внутренний модуль/пакет: тип OrderbookEngine с ApplySnapshot, ApplyDelta, GetTopLevels.
-  - Выдаёт агрегированные updates наружу (best bid/ask, глубина до N уровней).
+  - Internal module/package: OrderbookEngine type with ApplySnapshot, ApplyDelta, GetTopLevels.
+  - Emits aggregated updates to the outside (best bid/ask, depth up to N levels).
 
 ### 5.4 Order lifecycle
 
-- **Обязанности:**
-  - Присвоение/валидирование ClientOrderId (если не задан пользователем).
-  - Маппинг ClientOrderId ↔ ExchangeOrderId.
-  - Реализация CancelForgottenOrders(symbol, TTL): получение открытых ордеров, фильтрация по возрасту, отмена подходящих.
-- **Важно:** В v1 не вводить общую модель статусов ордера (enum) на уровень SDK; по необходимости — только на уровне деска.
+- **Responsibilities:**
+  - Assign/validate ClientOrderId (if not set by the user).
+  - ClientOrderId ↔ ExchangeOrderId mapping.
+  - Implement CancelForgottenOrders(symbol, TTL): fetch open orders, filter by age, cancel eligible ones.
+- **Note:** Do not introduce a general order status model (enum) at the SDK level in v1; if needed — only at the desk level.
 
 ### 5.5 Config module
 
-- Конфигурационная структура для SDK одной Биржи:
-  - API-ключ/секрет (по возможности из env).
+- Configuration struct for the SDK of a single Exchange:
+  - API key/secret (preferably from env).
   - Base REST URL, WS URL.
-  - Таймауты запросов.
-  - Настройки reconnect (initial backoff, max backoff, jitter).
-  - Настройки orderbook (размер snapshot, max depth, policy при gap).
+  - Request timeouts.
+  - Reconnect settings (initial backoff, max backoff, jitter).
+  - Orderbook settings (snapshot size, max depth, gap policy).
 
-### 5.6 Ошибки и маппинг кодов
+### 5.6 Errors and code mapping
 
-- В SDK должен быть единый тип/набор типов ошибок: например ErrorKind (Network, RateLimit, Auth, InvalidRequest, Exchange, Unknown).
-- Маппинг биржевых кодов (например, для Binance: -1021 → TimeSync, 429 → RateLimit) в эти типы; каждая ошибка содержит Kind, биржевой код/сообщение и обёрнутый error для errors.Is/As.
+- The SDK must have a single type/set of error types: e.g. ErrorKind (Network, RateLimit, Auth, InvalidRequest, Exchange, Unknown).
+- Mapping of exchange codes (e.g. for Binance: -1021 → TimeSync, 429 → RateLimit) to these types; each error contains Kind, exchange code/message, and a wrapped error for errors.Is/As.
 
 ---
 
 ## 6) Non-functional requirements (perf/reliability/DX/security)
 
-- **Производительность:** Цель — программная задержка (внутри SDK) порядка ≤ 100 мкс на критических путях (парсинг одного WS-сообщения, применение одной delta к стакану). Минимизация аллокаций: повторное использование буферов, при необходимости быстрый JSON (json-iterator и т.п.).
-- **Надёжность:** Reconnect с backoff + jitter; автоматическое resubscribe после reconnect; при критических ошибках — детерминированное завершение Watch-функций (через errHandler и возврат ошибки).
-- **DX:** Понятные имена методов и структур; документация (GoDoc) с примерами для основных операций; API, удобный для обёртывания в унифицированный интерфейс деска.
-- **Security:** Секреты не логируются; поддержка передачи ключей через конфиг или env; корректная очистка чувствительных данных при необходимости.
+- **Performance:** Target — software latency (inside the SDK) of ≤ 100 µs on critical paths (parsing one WS message, applying one delta to the order book). Minimize allocations: reuse buffers, use fast JSON (json-iterator, etc.) where needed.
+- **Reliability:** Reconnect with backoff + jitter; automatic resubscribe after reconnect; on critical errors — deterministic termination of Watch functions (via errHandler and error return).
+- **DX:** Clear method and struct names; documentation (GoDoc) with examples for main operations; API convenient for wrapping in the unified desk interface.
+- **Security:** Secrets are not logged; support for passing keys via config or env; proper sanitization of sensitive data when necessary.
 
 ---
 
-## 7) Architecture (варианты и выбор, либо на собственное решение)
+## 7) Architecture (options and choice, or own decision)
 
-### Вариант A: Service-based (в стиле go-binance)
+### Option A: Service-based (go-binance style)
 
-- **Структура:** Client с HTTP-клиентом и подписью; для каждого REST-эндпоинта — свой Service с chain-style API и Do(ctx); отдельные функции/типы для WS (WsDepthServe, WsUserDataServe и т.п.).
-- **Плюсы:** Привычно; легко соответствовать документации Биржи; мелкие сервисы.
-- **Минусы:** Много кода/boilerplate; сильная связка с документацией конкретной Биржи.
+- **Structure:** Client with HTTP client and signing; a dedicated Service per REST endpoint with chain-style API and Do(ctx); separate functions/types for WS (WsDepthServe, WsUserDataServe, etc.).
+- **Pros:** Familiar; easy to match exchange documentation; small services.
+- **Cons:** Lots of code/boilerplate; tight coupling to the specific Exchange documentation.
 
-### Вариант B: Domain-based
+### Option B: Domain-based
 
-- **Структура:** Меньшее количество более «толстых» доменных интерфейсов: TradingClient (place/cancel/batch), AccountClient (positions, orders, leverage), MarketDataClient (orderbook, prices, candles), WsClient (подписки). Один Client собирает их и предоставляет наружу; внутри могут использоваться более мелкие сервисы.
-- **Плюсы:** API проще для пользователя; ближе к тому, что ждёт деск (Trade / Data / Account).
-- **Минусы:** Чуть более абстрактно, чем «в лоб» по документации.
-
----
-
-## 8) Public API design (описательно + совместимость с деском)
-
-- **Единая точка входа:** NewClient(config) (*Client, error) — возвращает «главный» клиент SDK для данной Биржи.
-- **Доменные под-клиенты:** client.Trading() → интерфейс с CreateOrder, CancelOrder, BatchCreateOrders и т.д.; client.Account() → GetPosition, GetOpenOrders, SetLeverage, SetPositionMode; client.MarketData() → GetOrderBook, GetHistoricalCandles; client.WS() → WatchOrderbook, WatchSpread, WatchPosition.
-- **Лёгкость обёртки в деск:** Внешние типы SDK по возможности близки к типам деска (CreateOrderRequest, OrderInfo, PositionInfo) или маппятся без потерь; можно реализовать адаптер ExchangeConnector, который просто делегирует в методы SDK.
+- **Structure:** Fewer, "fatter" domain interfaces: TradingClient (place/cancel/batch), AccountClient (positions, orders, leverage), MarketDataClient (orderbook, prices, candles), WsClient (subscriptions). One Client assembles them and exposes externally; internally may use smaller services.
+- **Pros:** Simpler API for the user; closer to what the desk expects (Trade / Data / Account).
+- **Cons:** Slightly more abstract than a direct mapping to exchange documentation.
 
 ---
 
-## 9) Data models & mappings (таблицы)
+## 8) Public API design (descriptive + desk compatibility)
 
-Пример для одной Биржи (с учётом её API):
-
-- **Order types:** Биржа: LIMIT, MARKET, LIMIT_MAKER и т.д. → SDK: OrderTypeLimit, OrderTypeMarket, PostOnly (если нужно), время в силе — GTC/IOC/FOK/GTX.
-- **Time in force:** Прямой маппинг в enum SDK.
-- **Symbol info:** Из ExchangeInfo (или аналога) в SymbolInfo SDK (min/max price, tickSize, stepSize, minNotional, precision).
-- **Position:** Биржевые поля (positionAmt, entryPrice и т.п.) → PositionInfo SDK.
-
-Точные таблицы маппинга для конкретной Биржи описываются в отдельном разделе/файле (contract docs); SDK обязана иметь стабильные доменные типы и чётко документировать соответствие полей и биржевых значений.
+- **Single entry point:** NewClient(config) (*Client, error) — returns the "main" SDK client for the Exchange.
+- **Domain sub-clients:** client.Trading() → interface with CreateOrder, CancelOrder, BatchCreateOrders, etc.; client.Account() → GetPosition, GetOpenOrders, SetLeverage, SetPositionMode; client.MarketData() → GetOrderBook, GetHistoricalCandles; client.WS() → WatchOrderbook, WatchSpread, WatchPosition.
+- **Easy desk wrapping:** External SDK types are as close as possible to desk types (CreateOrderRequest, OrderInfo, PositionInfo) or map without loss; it should be possible to implement an ExchangeConnector adapter that simply delegates to SDK methods.
 
 ---
 
-## 10) Sequence flows (текстовые диаграммы)
+## 9) Data models & mappings (tables)
+
+Example for a single Exchange (accounting for its API):
+
+- **Order types:** Exchange: LIMIT, MARKET, LIMIT_MAKER, etc. → SDK: OrderTypeLimit, OrderTypeMarket, PostOnly (if needed), time in force — GTC/IOC/FOK/GTX.
+- **Time in force:** Direct mapping to SDK enum.
+- **Symbol info:** From ExchangeInfo (or equivalent) to SDK SymbolInfo (min/max price, tickSize, stepSize, minNotional, precision).
+- **Position:** Exchange fields (positionAmt, entryPrice, etc.) → SDK PositionInfo.
+
+Precise mapping tables for a specific Exchange are described in a separate section/file (contract docs); the SDK must have stable domain types and clearly document field correspondence and exchange values.
+
+---
+
+## 10) Sequence flows (text diagrams)
 
 ### 10.1 Order creation
 
 ```
-Client           TradingClient(SDK)           REST API Биржи
+Client           TradingClient(SDK)           Exchange REST API
   | CreateOrder(ctx, req)   |                      |
   |------------------------>|  build REST request  |
   |                         |--------------------->|
@@ -249,48 +249,48 @@ Client          MarketDataClient + WS         REST          WS
 
 ## 11) Error handling & retry policy
 
-- **Классификация ошибок:** Network (timeout, connection reset, DNS), RateLimit, Auth (invalid key, signature), InvalidRequest (валидация или семантические ошибки), Exchange (непредусмотренные коды Биржи).
-- **Retry:** Network/временные — с backoff + jitter; RateLimit — на основе заголовков/ответа Биржи (или фиксированные задержки); InvalidRequest/Auth — без retry.
-- **REST vs WS:** REST-ошибки возвращаются вызывающему коду как error с Kind и деталями; WS-ошибки попадают в errHandler; при критической ошибке Watch-метод завершает работу.
+- **Error classification:** Network (timeout, connection reset, DNS), RateLimit, Auth (invalid key, signature), InvalidRequest (validation or semantic errors), Exchange (unhandled exchange codes).
+- **Retry:** Network/transient — with backoff + jitter; RateLimit — based on Exchange headers/response (or fixed delays); InvalidRequest/Auth — no retry.
+- **REST vs WS:** REST errors are returned to the caller as error with Kind and details; WS errors go to errHandler; on critical error, the Watch method terminates.
 
 ---
 
 ## 12) Rate limit policy
 
-- Реализация **перебиржевого** rate-limiter'а не входит в SDK как обязательный компонент, но SDK должна уметь читать и по возможности возвращать заголовки/метаданные по rate limit (usage counters Биржи) и маппить 429 и специальные коды в RateLimit ошибки.
-- Опционально: встроенный простой токен-бакет, включаемый параметром конфигурации, с категориями методов (Order/Cancel/Query/MarketData).
+- Implementing a **cross-exchange** rate limiter is not a required SDK component, but the SDK must be able to read and where possible return rate-limit headers/metadata (exchange usage counters) and map 429 and special codes to RateLimit errors.
+- Optional: built-in simple token bucket, enabled via config parameter, with method categories (Order/Cancel/Query/MarketData).
 
 ---
 
 ## 13) Testing strategy
 
-- **Unit tests:** Парсинг JSON ответов в структуры SDK; маппинг ошибок Биржи в типы SDK; логика orderbook (применение snapshot + delta, обнаружение gap, resync).
-- **Contract tests:** Фикстуры JSON с реальных ответов Биржи; тесты «изменения контракта» — если формат меняется, тесты падают.
-- **Integration tests (опционально):** Против testnet (если есть) или мок-сервера: place → GetOrder → cancel; подписка на WS и проверка формата/частоты событий.
+- **Unit tests:** Parsing JSON responses into SDK structs; mapping exchange errors to SDK types; orderbook logic (applying snapshot + delta, gap detection, resync).
+- **Contract tests:** JSON fixtures from real Exchange responses; "contract change" tests — if the format changes, tests fail.
+- **Integration tests (optional):** Against testnet (if available) or a mock server: place → GetOrder → cancel; subscribe to WS and verify event format/frequency.
 
 ---
 
 ## 14) Milestones & deliverables
 
-Пример для одной Биржи:
+Example for a single Exchange:
 
-1. **M1 — REST core:** Базовый REST-клиент (подпись, таймауты); методы CreateOrder, CreateBatchOrder, ModifyOrder, ModifyBatchOrder, CancelOrder, GetOpenOrders, GetSymbolInfo.
-2. **M2 — Orderbook & Market data:** GetOrderBook (snapshot); WS-подписки на depth/bid&ask спред/цены; orderbook engine с gap detection и resync.
+1. **M1 — REST core:** Basic REST client (signing, timeouts); methods CreateOrder, CreateBatchOrder, ModifyOrder, ModifyBatchOrder, CancelOrder, GetOpenOrders, GetSymbolInfo.
+2. **M2 — Orderbook & Market data:** GetOrderBook (snapshot); WS subscriptions for depth/bid&ask spread/prices; orderbook engine with gap detection and resync.
 3. **M3 — Account & position:** GetPosition, WatchPosition, ClosePosition; CancelAllOrders, CancelForgottenOrders.
-4. **M4 — Rate limits & ошибки:** Маппинг основных биржевых кодов в типы ошибок SDK; опциональный встроенный rate limit helper.
-5. **M5 — Документация и примеры:** GoDoc, README, примеры использования (simple market maker / tester).
+4. **M4 — Rate limits & errors:** Mapping of main exchange codes to SDK error types; optional built-in rate limit helper.
+5. **M5 — Documentation & examples:** GoDoc, README, usage examples (simple market maker / tester).
 
 ---
 
 ## 15) Acceptance criteria (Definition of Done)
 
-- SDK покрывает все API в Scope v1 для данной Биржи.
-- Orderbook engine обеспечивает консистентность стакана (snapshot + delta + seq + resync).
-- Все основные операции используют ClientOrderId либо корректно маппят биржевые идентификаторы.
-- Ошибки классифицированы, маппинг биржевых кодов проверен контракт-тестами.
-- Есть пример кода, интегрирующий SDK с унифицированным интерфейсом деска (ExchangeConnector).
-- Нет утечек горутин при отмене контекстов и закрытии WS-подписок.
+- SDK covers all APIs in Scope v1 for the given Exchange.
+- Orderbook engine ensures order book consistency (snapshot + delta + seq + resync).
+- All main operations use ClientOrderId or correctly map exchange identifiers.
+- Errors are classified; exchange code mapping verified by contract tests.
+- There is a code example integrating the SDK with the unified desk interface (ExchangeConnector).
+- No goroutine leaks on context cancellation and WS subscription close.
 
 ---
 
-*Конец ТЗ.*
+*End of specification.*

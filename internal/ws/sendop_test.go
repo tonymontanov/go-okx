@@ -1,27 +1,27 @@
 /*
-ФАЙЛ: internal/ws/sendop_test.go
+FILE: internal/ws/sendop_test.go
 
-ОПИСАНИЕ:
-Тесты на Conn.SendOp — request/reply паттерн поверх одного WS-соединения.
+DESCRIPTION:
+Tests for Conn.SendOp — request/reply pattern over a single WS connection.
 
-Покрытие:
-  - TestSendOp_HappyPath           — корректное отправление и получение reply
-    с правильным correlation-id и payload в Data.
-  - TestSendOp_AutoIDGeneration    — пустой req.ID порождает уникальный id;
-    несколько последовательных SendOp дают разные id.
-  - TestSendOp_Timeout             — сервер игнорирует op, SendOp возвращает
-    ErrOpTimeout, pending-map очищается, инкрементится op_timeout_total.
-  - TestSendOp_ContextCancel       — отмена ctx до прихода reply возвращает
-    ctx.Err() и не оставляет утечек в pending.
-  - TestSendOp_NotReady            — SendOp до Start (или сразу после Close)
-    возвращает типизированную ошибку без подвисов.
-  - TestSendOp_ConnectionLost      — сервер обрывает соединение, все
-    pending SendOp немедленно получают синтетический OpResponse с
-    code="disconnected" (НЕ висят до таймаута).
-  - TestSendOp_OrphanReply         — сервер шлёт reply с неизвестным id;
-    инкрементится op_orphan_total, push-ветка остаётся работоспособной.
-  - TestSendOp_ConcurrentReplies   — N параллельных SendOp; сервер отвечает
-    в обратном порядке; каждый caller получает СВОЙ reply.
+Coverage:
+  - TestSendOp_HappyPath           — correct send and receive reply
+    with the right correlation-id and payload in Data.
+  - TestSendOp_AutoIDGeneration    — empty req.ID generates a unique id;
+    multiple sequential SendOp calls produce distinct ids.
+  - TestSendOp_Timeout             — server ignores op, SendOp returns
+    ErrOpTimeout, pending-map is cleared, op_timeout_total is incremented.
+  - TestSendOp_ContextCancel       — cancelling ctx before reply arrives returns
+    ctx.Err() and leaves no leaks in pending.
+  - TestSendOp_NotReady            — SendOp before Start (or immediately after Close)
+    returns a typed error without hanging.
+  - TestSendOp_ConnectionLost      — server drops connection, all pending SendOp
+    immediately receive a synthetic OpResponse with code="disconnected"
+    (do NOT hang until timeout).
+  - TestSendOp_OrphanReply         — server sends reply with an unknown id;
+    op_orphan_total is incremented, push branch remains functional.
+  - TestSendOp_ConcurrentReplies   — N concurrent SendOp calls; server replies in
+    reverse order; each caller receives ITS OWN reply.
 */
 
 package ws
@@ -39,9 +39,9 @@ import (
 	"github.com/tonymontanov/go-okx/v2/internal/okxlog"
 )
 
-// startedConn — helper: поднимает mock-сервер, создаёт Conn, делает Start,
-// триггерит установку сокета через no-op подписку и ждёт готовности.
-// Возвращает Conn, фабрику метрик и cleanup-func.
+// startedConn — helper: starts a mock server, creates a Conn, calls Start,
+// triggers socket establishment via a no-op subscription, and waits for readiness.
+// Returns Conn, metrics factory, and cleanup func.
 func startedConn(t *testing.T, script serverScript) (*Conn, *testFactory, func()) {
 	t.Helper()
 
@@ -56,15 +56,15 @@ func startedConn(t *testing.T, script serverScript) (*Conn, *testFactory, func()
 	ctx, cancel = context.WithCancel(context.Background())
 	c.Start(ctx)
 
-	// триггерим установку сокета через подписку — без неё supervise
-	// не запустит connectAndRun до первого Subscribe/SendOp.
+	// trigger socket establishment via a subscription — without it supervise
+	// will not call connectAndRun until the first Subscribe/SendOp.
 	_ = c.Subscribe(&Subscription{
 		Channel: "trades",
 		InstID:  "BTC-USDT",
 		Handler: func(_ string, _ []byte) {},
 	})
 
-	// ждём готовности сокета (socket != nil)
+	// wait for socket readiness (socket != nil)
 	if !waitFor(2*time.Second, func() bool {
 		c.mu.RLock()
 		var ready bool = c.socket != nil
@@ -156,7 +156,7 @@ func TestSendOp_Timeout(t *testing.T) {
 	var f *testFactory
 	var cleanup func()
 	c, f, cleanup = startedConn(t, serverScript{
-		onOp: func(_, _, _ string) []string { return nil }, // молчим
+		onOp: func(_, _, _ string) []string { return nil }, // silent
 	})
 	defer cleanup()
 
@@ -181,14 +181,14 @@ func TestSendOp_ContextCancel(t *testing.T) {
 	var c *Conn
 	var cleanup func()
 	c, _, cleanup = startedConn(t, serverScript{
-		onOp: func(_, _, _ string) []string { return nil }, // молчим
+		onOp: func(_, _, _ string) []string { return nil }, // silent
 	})
 	defer cleanup()
 
 	var ctx context.Context
 	var cancel context.CancelFunc
 	ctx, cancel = context.WithCancel(context.Background())
-	// отменяем через 30мс, не дожидаясь таймаута
+	// cancel after 30ms, without waiting for timeout
 	go func() {
 		time.Sleep(30 * time.Millisecond)
 		cancel()
@@ -207,7 +207,7 @@ func TestSendOp_ContextCancel(t *testing.T) {
 }
 
 func TestSendOp_NotReady(t *testing.T) {
-	// Создаём Conn, но НЕ вызываем Start — сокет не установится.
+	// Create Conn but do NOT call Start — socket will not be established.
 	var f *testFactory = newTestFactory()
 	var c *Conn = NewConn(Config{
 		URL:                     "ws://127.0.0.1:1",
@@ -224,7 +224,7 @@ func TestSendOp_NotReady(t *testing.T) {
 		t.Fatalf("expected ErrConnNotReady, got %v", err)
 	}
 
-	// После Close — ErrConnClosed
+	// After Close — ErrConnClosed
 	_ = c.Close()
 	_, err = c.SendOp(ctx, OpRequest{Op: "order"}, 100*time.Millisecond)
 	if err != ErrConnClosed {
@@ -233,12 +233,12 @@ func TestSendOp_NotReady(t *testing.T) {
 }
 
 func TestSendOp_ConnectionLost(t *testing.T) {
-	// Сервер принимает op, но НЕ отвечает; затем мы закрываем Conn —
-	// это эмулирует disconnect-эффект (Close дренирует pending).
-	// Полноценный disconnect-сценарий с самым сервером сложнее (sleep +
-	// httptest.Server.Close разрывает сокет, но read-loop возвращается с
-	// произвольной задержкой); явный Close проще и тестирует ту же
-	// failAllPending ветку.
+	// Server accepts op but does NOT reply; then we close Conn —
+	// emulating a disconnect effect (Close drains pending).
+	// A full disconnect scenario with the server itself is harder (sleep +
+	// httptest.Server.Close breaks the socket, but read-loop returns with
+	// arbitrary delay); explicit Close is simpler and tests the same
+	// failAllPending branch.
 	var c *Conn
 	var cleanup func()
 	c, _, cleanup = startedConn(t, serverScript{
@@ -253,16 +253,15 @@ func TestSendOp_ConnectionLost(t *testing.T) {
 		doneCh <- err
 	}()
 
-	// даём SendOp успеть зарегистрироваться в pending
+	// give SendOp time to register in pending
 	time.Sleep(50 * time.Millisecond)
 	_ = c.Close()
 
 	select {
 	case err := <-doneCh:
-		// После Close failAllPending шлёт OpResponse{Code:"disconnected"};
-		// SendOp возвращает (resp, nil) — ошибки нет, потому что reply
-		// пришёл (хоть и синтетический). Контракт: caller проверяет
-		// resp.Code != "0".
+		// After Close, failAllPending sends OpResponse{Code:"disconnected"};
+		// SendOp returns (resp, nil) — no error because a reply arrived
+		// (even a synthetic one). Contract: caller checks resp.Code != "0".
 		if err != nil {
 			t.Fatalf("SendOp returned error instead of synthetic reply: %v", err)
 		}
@@ -272,8 +271,8 @@ func TestSendOp_ConnectionLost(t *testing.T) {
 }
 
 func TestSendOp_OrphanReply(t *testing.T) {
-	// Сервер шлёт reply с непредусмотренным id ДО того, как мы что-либо
-	// отправили. Это эмулирует server-side noise / двойной reply.
+	// Server sends reply with an unexpected id BEFORE we send anything.
+	// Emulates server-side noise / double reply.
 	var c *Conn
 	var f *testFactory
 	var cleanup func()
@@ -292,32 +291,31 @@ func TestSendOp_OrphanReply(t *testing.T) {
 		t.Fatalf("orphan counter must be incremented for unknown-id reply")
 	}
 
-	// После этого обычные subscribe-push'и должны продолжать работать.
-	// Проверим, что push с data попадает в handler (через новую подписку).
+	// After this, normal subscribe-pushes must continue to work.
+	// Verify that a push with data reaches the handler (via a new subscription).
 	var got atomic.Int64
 	_ = c.Subscribe(&Subscription{
 		Channel: "books",
 		InstID:  "ETH-USDT",
 		Handler: func(_ string, _ []byte) { got.Add(1) },
 	})
-	// этот subscribe сам по себе спровоцирует ack+push в onSubscribe выше
-	// (если он был передан). В нашем сценарии onSubscribe возвращает reply
-	// с id, что НЕ должно ломать receive-pipeline.
+	// this subscribe itself will trigger ack+push in onSubscribe above
+	// (if it was provided). In our scenario onSubscribe returns a reply
+	// with id, which must NOT break the receive-pipeline.
 	if f.Get("okx_ws_op_orphan_total") < 1 {
 		t.Fatalf("orphan counter regression")
 	}
 }
 
 func TestSendOp_ConcurrentReplies(t *testing.T) {
-	// Сервер задерживает ответы случайно, проверяя что correlation
-	// работает корректно для параллельных запросов.
+	// Server delays replies randomly, verifying that correlation works correctly
+	// for concurrent requests.
 	var c *Conn
 	var cleanup func()
 	c, _, cleanup = startedConn(t, serverScript{
 		onOp: func(id, op, raw string) []string {
 			_ = raw
-			// echo back id в ordId — позже сверим, что каждый caller
-			// получил именно свой reply.
+			// echo back id in ordId — later verify each caller got ITS OWN reply.
 			return []string{
 				`{"id":"` + id + `","op":"` + op + `","code":"0","msg":"","data":[{"ordId":"echo-` + id + `"}]}`,
 			}
@@ -356,6 +354,6 @@ func TestSendOp_ConcurrentReplies(t *testing.T) {
 	}
 }
 
-// keepRefs гарантирует, что компилятор не выкинет ссылку на codec,
-// которая нужна на случай добавления Unmarshal-проверок в Data.
+// keepRefs ensures the compiler does not discard the codec reference,
+// needed in case Unmarshal checks on Data are added.
 var _ = codec.Marshal

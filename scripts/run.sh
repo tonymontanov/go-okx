@@ -2,16 +2,16 @@
 # ----------------------------------------------------------------------------
 # scripts/run.sh
 #
-# Wrapper для запуска любого примера go-okx с переменными из .env.
+# Wrapper for running any go-okx example with variables from .env.
 #
-# Использование:
+# Usage:
 #   ./scripts/run.sh ./examples/simple-trade
 #   ./scripts/run.sh ./examples/orderbook-watcher
 #
-# Поведение:
-#   - Загружает все переменные из .env (если он есть рядом с этим скриптом).
-#   - Падает с понятной ошибкой, если .env отсутствует.
-#   - Передаёт все аргументы как есть в `go run`.
+# Behavior:
+#   - Loads all variables from .env (if present next to this script).
+#   - Exits with a clear error if .env is missing.
+#   - Passes all arguments as-is to `go run`.
 # ----------------------------------------------------------------------------
 
 set -euo pipefail

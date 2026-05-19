@@ -1,20 +1,20 @@
 /*
-ФАЙЛ: swap/types/order-book-level.go
+FILE: swap/types/order-book-level.go
 
-ОПИСАНИЕ:
-Уровень стакана для SWAP-профиля. С момента выделения общего слоя
-github.com/tonymontanov/go-okx/v2/types — это type-alias на
-commontypes.OrderBookLevel (формат идентичен для spot и swap).
+DESCRIPTION:
+Order book level for the SWAP profile. Since the common layer was extracted —
+a type alias for commontypes.OrderBookLevel (the format is identical for spot
+and swap).
 
-Полная документация — в types/order-book-level.go.
+Full documentation is in types/order-book-level.go.
 
-ЕДИНИЦА Size: для SWAP — контракты OKX (умножать на ctVal для приведения
-в base). Эта семантика на уровне адаптера/коннектора, не структуры.
+Size unit: for SWAP — OKX contracts (multiply by ctVal to convert to base).
+This semantic belongs to the adapter/connector layer, not the struct.
 */
 
 package types
 
 import commontypes "github.com/tonymontanov/go-okx/v2/types"
 
-// OrderBookLevel — один уровень стакана. См. commontypes.OrderBookLevel.
+// OrderBookLevel — one order book level. See commontypes.OrderBookLevel.
 type OrderBookLevel = commontypes.OrderBookLevel

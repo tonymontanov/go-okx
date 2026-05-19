@@ -1,41 +1,41 @@
 /*
-ФАЙЛ: spot/types/order-info.go
+FILE: spot/types/order-info.go
 
-ОПИСАНИЕ:
-Информация об ордере SPOT. Структурно совпадает с SWAP OrderInfo
-(см. swaptypes.OrderInfo) — единственное отличие: на SPOT Size в БАЗОВОЙ
-валюте, а не в контрактах. Поэтому делаем отдельный type, чтобы документация
-поля Size была корректной.
+DESCRIPTION:
+SPOT order information. Structurally matches SWAP OrderInfo
+(see swaptypes.OrderInfo) — the only difference: on SPOT Size is in BASE
+currency, not in contracts. A separate type is defined to ensure the Size
+field documentation is accurate.
 */
 
 package types
 
 import "github.com/shopspring/decimal"
 
-// OrderInfo — информация об ордере SPOT.
+// OrderInfo — SPOT order information.
 type OrderInfo struct {
-	// OrderID — биржевой id (ordId).
+	// OrderID — exchange order id (ordId).
 	OrderID string
-	// ClientOrderID — клиентский id (clOrdId).
+	// ClientOrderID — client order id (clOrdId).
 	ClientOrderID string
-	// InstID — инструмент в формате OKX SPOT (например, "BTC-USDT").
+	// InstID — instrument in OKX SPOT format (e.g. "BTC-USDT").
 	InstID string
-	// Side — направление.
+	// Side — order direction.
 	Side SideType
-	// OrderType — тип ордера.
+	// OrderType — order type.
 	OrderType OrderType
-	// Price — цена ордера.
+	// Price — order price.
 	Price decimal.Decimal
-	// Size — размер в БАЗОВОЙ валюте (например, 0.1 BTC).
+	// Size — size in BASE currency (e.g. 0.1 BTC).
 	Size decimal.Decimal
-	// FilledSize — сколько исполнено (accFillSz), в БАЗОВОЙ валюте.
+	// FilledSize — filled quantity (accFillSz), in BASE currency.
 	FilledSize decimal.Decimal
-	// State — статус ордера.
+	// State — order status.
 	State OrderState
-	// CreatedAtMs — таймштамп создания (миллисекунды).
+	// CreatedAtMs — creation timestamp (milliseconds).
 	CreatedAtMs int64
-	// UpdatedAtMs — таймштамп последнего обновления.
+	// UpdatedAtMs — last update timestamp.
 	UpdatedAtMs int64
-	// RateLimits — слепок заголовков rate-limit, полученных вместе с ответом.
+	// RateLimits — snapshot of rate-limit headers received with the response.
 	RateLimits map[string]string
 }

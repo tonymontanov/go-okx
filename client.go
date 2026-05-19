@@ -1,28 +1,28 @@
 /*
-ФАЙЛ: client.go
+FILE: client.go
 
-ОПИСАНИЕ:
-Главный публичный Client SDK. Хранит shared-ресурсы (REST-клиент, signer,
-конфиг, логгер) и раздаёт «ленивых» доменных саб-клиентов по требованию.
-В v1 поддержан только SWAP-профиль; SPOT-профиль зарезервирован и реализуется
-отдельной итерацией.
+DESCRIPTION:
+The main public SDK Client. Holds shared resources (REST client, signer,
+config, logger) and provides lazy domain sub-clients on demand.
+In v1 only the SWAP profile is supported; the SPOT profile is reserved and
+implemented in a separate iteration.
 
-ОСНОВНЫЕ ФУНКЦИИ:
-  - NewClient(cfg)        : конструктор с проверкой Config и установкой defaults.
-  - (Client).Swap()       : возвращает саб-клиент SWAP-профиля (instType=SWAP).
-                            Создаётся лениво при первом обращении.
-  - (Client).Close()      : корректно завершает фоновые операции (WS-стримы,
-                            пулы соединений). Не блокирующая.
+MAIN FUNCTIONS:
+  - NewClient(cfg)        : constructor with Config validation and defaults.
+  - (Client).Swap()       : returns the SWAP-profile sub-client (instType=SWAP).
+                            Created lazily on first access.
+  - (Client).Close()      : gracefully shuts down background operations (WS
+                            streams, connection pools). Non-blocking.
 
-ОСНОВНЫЕ СУЩНОСТИ:
-  - Client          : корневой объект SDK.
-  - swapClientCtor  : внутренний контракт, через который пакет swap создаёт
-                      свой клиент. Это позволяет избежать import-cycle между
-                      корнем (где живёт Client) и swap (где живёт SwapClient).
+MAIN ENTITIES:
+  - Client          : root SDK object.
+  - swapClientCtor  : internal contract through which the swap package creates
+                      its client. This avoids an import cycle between the root
+                      (where Client lives) and swap (where SwapClient lives).
 
-ЗАВИСИМОСТИ:
-- internal/auth, internal/rest: подпись и REST-транспорт.
-- sync: ленивая инициализация саб-клиентов.
+DEPENDENCIES:
+- internal/auth, internal/rest: signing and REST transport.
+- sync: lazy sub-client initialization.
 */
 
 package okx
@@ -34,7 +34,7 @@ import (
 	"github.com/tonymontanov/go-okx/v2/internal/rest"
 )
 
-// Client — корневой объект SDK.
+// Client — root SDK object.
 type Client struct {
 	cfg    Config
 	signer *auth.Signer
@@ -48,9 +48,9 @@ type Client struct {
 	spotVal  any
 }
 
-// NewClient создаёт корневой клиент SDK. cfg проходит withDefaults + validate.
-// Если credentials заданы — Signer будет enabled и подпишет приватные вызовы;
-// иначе клиент сможет работать только с public endpoint'ами.
+// NewClient creates the root SDK client. cfg goes through withDefaults + validate.
+// If credentials are set — the Signer will be enabled and sign private calls;
+// otherwise the client can only access public endpoints.
 func NewClient(cfg Config) (*Client, error) {
 	cfg = cfg.withDefaults()
 	var err error = cfg.validate()
@@ -67,11 +67,11 @@ func NewClient(cfg Config) (*Client, error) {
 		Demo:                cfg.Demo,
 		RateLimitObserver:   cfg.RateLimitObserver,
 	}
-	// Прокидываем новый event-observer через тонкий адаптер. Структура
-	// RateLimitEvent живёт в корневом okx-пакете и НЕ может пробрасываться
-	// напрямую в internal/rest (import-cycle). Поэтому rest вызывает
-	// callback с плоскими аргументами (endpoint, method, headers, meta),
-	// а мы здесь собираем RateLimitEvent для конечного подписчика.
+	// Forward the new event-observer via a thin adapter. The RateLimitEvent
+	// struct lives in the root okx package and CANNOT be passed directly into
+	// internal/rest (import cycle). Therefore rest calls the callback with flat
+	// arguments (endpoint, method, headers, meta), and here we assemble
+	// RateLimitEvent for the final subscriber.
 	if cfg.RateLimitEventObserver != nil {
 		var userObserver func(RateLimitEvent) = cfg.RateLimitEventObserver
 		restCfg.RateLimitEventObserver = func(endpoint, method string, headers map[string]string, meta rest.RequestMeta) {
@@ -95,23 +95,23 @@ func NewClient(cfg Config) (*Client, error) {
 	}, nil
 }
 
-// Config возвращает копию финального конфига (после withDefaults). Полезно для
-// диагностики и метрик.
+// Config returns a copy of the final config (after withDefaults). Useful for
+// diagnostics and metrics.
 func (c *Client) Config() Config { return c.cfg }
 
-// Logger возвращает текущий логгер.
+// Logger returns the current logger.
 func (c *Client) Logger() Logger { return c.logger }
 
-// Signer возвращает internal/auth.Signer (для внутренних подпакетов SDK).
-// Экспортируется для использования из swap/spot подпакетов — пользовательский
-// код не должен брать signer напрямую.
+// Signer returns the internal/auth.Signer (for internal SDK sub-packages).
+// Exported for use by swap/spot sub-packages — user code should not access the
+// signer directly.
 func (c *Client) Signer() *auth.Signer { return c.signer }
 
-// REST возвращает internal/rest.Client (для внутренних подпакетов SDK).
+// REST returns the internal/rest.Client (for internal SDK sub-packages).
 func (c *Client) REST() *rest.Client { return c.rest }
 
-// Close высвобождает ресурсы (idle HTTP-соединения). Безопасно вызывать
-// несколько раз. WS-стримы завершаются по отмене своих контекстов.
+// Close releases resources (idle HTTP connections). Safe to call multiple times.
+// WS streams terminate on cancellation of their contexts.
 func (c *Client) Close() error {
 	if c == nil {
 		return nil
@@ -120,27 +120,27 @@ func (c *Client) Close() error {
 	return nil
 }
 
-// swapClientFactory — функция-строитель swap-клиента. Регистрируется пакетом
-// swap через RegisterSwapFactory в init(). Это обходит import-cycle.
+// swapClientFactory — swap client builder function. Registered by the swap
+// package via RegisterSwapFactory in init(). This avoids the import cycle.
 var swapClientFactory func(c *Client) any
 
-// RegisterSwapFactory регистрирует фабрику swap-клиента. Должна вызываться из
-// init() пакета swap. Идемпотентна.
+// RegisterSwapFactory registers the swap client factory. Must be called from
+// the swap package's init(). Idempotent.
 func RegisterSwapFactory(f func(c *Client) any) {
 	if swapClientFactory == nil {
 		swapClientFactory = f
 	}
 }
 
-// Swap возвращает swap-саб-клиент. Тип результата — any, потому что корневой
-// пакет не может импортировать swap (тот импортирует корень). Вызывающий код
-// сразу type-assert'ит к *swap.Client.
+// Swap returns the swap sub-client. The return type is any because the root
+// package cannot import swap (which imports the root). The caller immediately
+// type-asserts to *swap.Client.
 //
-// Идиома использования:
+// Usage idiom:
 //
 //	var swapClient *swap.Client = client.Swap().(*swap.Client)
 //
-// Lazy: создаётся при первом обращении через зарегистрированную фабрику.
+// Lazy: created on first access via the registered factory.
 func (c *Client) Swap() any {
 	c.swapOnce.Do(func() {
 		if swapClientFactory == nil {
@@ -152,38 +152,37 @@ func (c *Client) Swap() any {
 	return c.swapVal
 }
 
-// spotClientFactory — функция-строитель spot-клиента. Зарегистрируется пакетом
-// spot в init() ровно как swap (см. RegisterSwapFactory).
+// spotClientFactory — spot client builder function. Registered by the spot
+// package in init() exactly as swap (see RegisterSwapFactory).
 var spotClientFactory func(c *Client) any
 
-// RegisterSpotFactory регистрирует фабрику spot-клиента. Должна вызываться из
-// init() пакета spot. Идемпотентна.
+// RegisterSpotFactory registers the spot client factory. Must be called from
+// the spot package's init(). Idempotent.
 //
-// Spot и Swap — независимые домены: подключение одного НЕ требует второго.
-// Это позволяет приложениям импортировать только нужный профиль и не
-// тянуть в бинарь лишний код:
+// Spot and Swap are independent domains: enabling one does NOT require the other.
+// This lets applications import only the needed profile without pulling unused
+// code into the binary:
 //
-//	import _ "github.com/tonymontanov/go-okx/v2/spot"  // только spot
-//	import _ "github.com/tonymontanov/go-okx/v2/swap"  // только swap
+//	import _ "github.com/tonymontanov/go-okx/v2/spot"  // spot only
+//	import _ "github.com/tonymontanov/go-okx/v2/swap"  // swap only
 //
-// Корневой пакет okx НЕ импортирует ни spot, ни swap — это обходит
-// import-cycle (оба пакета импортируют корневой okx для okx.Config /
-// okx.NewError и т.д.).
+// The root okx package does NOT import spot or swap — this avoids the import
+// cycle (both packages import the root okx for okx.Config / okx.NewError etc.).
 func RegisterSpotFactory(f func(c *Client) any) {
 	if spotClientFactory == nil {
 		spotClientFactory = f
 	}
 }
 
-// Spot возвращает spot-саб-клиент. См. Swap() — семантика идентична.
+// Spot returns the spot sub-client. See Swap() — semantics are identical.
 //
-// Идиома использования:
+// Usage idiom:
 //
 //	var spotClient *spot.Client = client.Spot().(*spot.Client)
 //
-// Lazy: создаётся при первом обращении через зарегистрированную фабрику.
-// Если пакет spot не импортирован (фабрика не зарегистрирована) —
-// возвращается nil и пишется warn в логгер.
+// Lazy: created on first access via the registered factory.
+// If the spot package is not imported (factory not registered) —
+// returns nil and logs a warning.
 func (c *Client) Spot() any {
 	c.spotOnce.Do(func() {
 		if spotClientFactory == nil {

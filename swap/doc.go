@@ -1,28 +1,28 @@
 /*
-ФАЙЛ: swap/doc.go
+FILE: swap/doc.go
 
-ОПИСАНИЕ:
-Пакет swap реализует SWAP-профиль OKX (USD-M Perpetual). Это «толстый»
-доменный клиент по архитектуре Variant B (см. ТЗ §7): пользователь получает
-четыре саб-клиента — Trading, Account, MarketData, Stream — каждый со своими
-методами в идиоматичном Go-стиле.
+DESCRIPTION:
+Package swap implements the OKX SWAP profile (USD-M Perpetual). This is a "fat"
+domain client following the Variant B architecture: the user receives four
+sub-clients — Trading, Account, MarketData, Stream — each with their own
+methods in idiomatic Go style.
 
-ПУБЛИЧНЫЙ ВХОД:
-  - swap.NewClient(parent *okx.Client) *Client    — обычный путь;
-  - parent.Swap().(*swap.Client)                  — то же самое лениво, без
-                                                    дублирования передачи parent.
+PUBLIC ENTRY POINTS:
+  - swap.NewClient(parent *okx.Client) *Client    — standard path;
+  - parent.Swap().(*swap.Client)                  — same thing lazily, without
+                                                    duplicating the parent argument.
 
-САБ-КЛИЕНТЫ:
-  - (*Client).Trading()    : CreateOrder, ModifyOrder, CancelOrder, batch-варианты, CancelAll, CancelForgotten.
+SUB-CLIENTS:
+  - (*Client).Trading()    : CreateOrder, ModifyOrder, CancelOrder, batch variants, CancelAll, CancelForgotten.
   - (*Client).Account()    : GetPosition/GetOpenOrders/ClosePosition/SetLeverage/SetPositionMode.
   - (*Client).MarketData() : GetSymbolInfo/GetOrderBook/GetHistoricalCandles.
-  - (*Client).Stream()     : Watch* (WebSocket-подписки). Реализуется в M3.
+  - (*Client).Stream()     : Watch* (WebSocket subscriptions).
 
-ТИПЫ:
-Все доменные структуры (CreateOrderRequest, OrderInfo, PositionInfo, …) живут
-в подпакете swap/types и используются и саб-клиентами SDK, и адаптером деска.
+TYPES:
+All domain structs (CreateOrderRequest, OrderInfo, PositionInfo, …) live in the
+swap/types sub-package and are used by both the SDK sub-clients and the desk adapter.
 
-В рамках v1 поддерживается ТОЛЬКО SWAP (instType=SWAP). SPOT-профиль будет
-реализован отдельно (пакет spot).
+v1 supports SWAP only (instType=SWAP). The SPOT profile is implemented
+separately (package spot).
 */
 package swap
