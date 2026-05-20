@@ -8,7 +8,18 @@ Low-level SDK REST client. A thin layer over http.Client that:
   3. executes the HTTP call with deadline from ctx or Config.RequestTimeout;
   4. parses the OKX envelope {code, msg, data};
   5. maps errors to *okxerr.Error with the correct category;
-  6. collects rate-limit headers to return to the caller.
+  6. notifies rate-limit observers (always with an empty headers map, see below).
+
+RATE-LIMIT HEADERS NOTE (since v2.5.1):
+The SDK no longer attempts to collect any rate-limit response headers from
+OKX. Empirical observation across all trading and account endpoints — plus
+the absence of any documented `ratelimit-*` headers in OKX docs-v5 —
+confirms that OKX does not currently return such headers (Binance does,
+OKX does not). The observer callbacks therefore always receive an empty
+non-nil `map[string]string{}`. For a typed source of truth on the live
+sub-account budget, use the new
+`spot.Account().GetAccountRateLimit(ctx)` / `swap.Account().GetAccountRateLimit(ctx)`
+REST wrapper around GET /api/v5/account/rate-limit.
 
 IMPORT NOTE:
   - Does NOT import the root okx package (it imports rest), to avoid an
@@ -33,16 +44,6 @@ import (
 	"github.com/tonymontanov/go-okx/v2/internal/okxerr"
 	"github.com/tonymontanov/go-okx/v2/internal/okxlog"
 )
-
-// rateLimitHeaders — OKX headers returned to the caller.
-var rateLimitHeaders = []string{
-	"ratelimit-limit",
-	"ratelimit-remaining",
-	"ratelimit-reset",
-	"x-ratelimit-limit",
-	"x-ratelimit-remaining",
-	"x-ratelimit-reset",
-}
 
 // Config — REST transport parameters. Populated from the public okx.RestConfig
 // in the root package (explicit struct conversion is done there to avoid an
@@ -181,25 +182,33 @@ func (c *Client) Close() {
 }
 
 /*
-Do executes a single REST call and returns the Response envelope + rate-limit
-headers + error. Error semantics — see package documentation.
+Do executes a single REST call and returns the Response envelope + an always
+empty rate-limit headers map + error. The headers map is preserved in the
+return signature for backwards compatibility — OKX does not return rate-limit
+response headers (see file header for details), so callers should treat it as
+always empty.
+
+Error semantics — see package documentation.
 */
 func (c *Client) Do(ctx context.Context, opts Options) (Response, map[string]string, error) {
 	var resp Response
-	var rateLimits map[string]string
+	// emptyRateLimits is the always-empty headers map returned to callers and
+	// passed to observers. Allocated per call to keep the public contract
+	// "callee owns the map, may mutate it" intact.
+	var emptyRateLimits map[string]string = map[string]string{}
 
 	var fullURL string
 	var bodyStr string
 	var err error
 	fullURL, bodyStr, err = c.buildRequest(opts)
 	if err != nil {
-		return resp, rateLimits, err
+		return resp, emptyRateLimits, err
 	}
 
 	var req *http.Request
 	req, err = http.NewRequestWithContext(ctx, strings.ToUpper(opts.Method), fullURL, bytes.NewBufferString(bodyStr))
 	if err != nil {
-		return resp, rateLimits, okxerr.New(okxerr.ErrorKindInvalidRequest, "", "rest: build request", err)
+		return resp, emptyRateLimits, okxerr.New(okxerr.ErrorKindInvalidRequest, "", "rest: build request", err)
 	}
 
 	c.applyHeaders(req, opts, bodyStr)
@@ -208,39 +217,36 @@ func (c *Client) Do(ctx context.Context, opts Options) (Response, map[string]str
 	var started time.Time = time.Now()
 	httpResp, err = c.httpClient.Do(req)
 	if err != nil {
-		return resp, rateLimits, classifyTransportError(err)
+		return resp, emptyRateLimits, classifyTransportError(err)
 	}
 	defer func() {
 		_ = httpResp.Body.Close()
 	}()
 
-	rateLimits = collectRateLimitHeaders(httpResp.Header)
 	// Notify observers BEFORE parsing the body: even if the response is invalid
-	// JSON or contains an OKX error, the rate-limit information is still useful
-	// for the external rate-limiter (e.g. to avoid blocking a retry).
-	// Non-nil map guarantee in observer — simplifies the subscriber (see okx.Config).
+	// JSON or contains an OKX error, the observer must still fire so that the
+	// external rate-limiter can update its accounting (it can read the request
+	// metadata via Options.Meta even when the response is unparseable).
 	//
-	// If both observers are set, both are called in sequence. Order:
-	// legacy (RateLimitObserver) first, then event (RateLimitEventObserver).
-	// This enables gradual migration of existing subscribers without losing events
-	// on either side.
+	// Headers map is intentionally always empty (see file header). The legacy
+	// RateLimitObserver kept its signature for backwards compatibility but
+	// receives the same empty map as RateLimitEventObserver.
+	//
+	// If both observers are set, both are called in sequence: legacy first,
+	// then event. This enables gradual migration without losing events.
 	if c.rateLimitObserver != nil || c.rateLimitEventObserver != nil {
-		var hdrs map[string]string = rateLimits
-		if hdrs == nil {
-			hdrs = map[string]string{}
-		}
 		if c.rateLimitObserver != nil {
-			c.rateLimitObserver(opts.Path, hdrs)
+			c.rateLimitObserver(opts.Path, emptyRateLimits)
 		}
 		if c.rateLimitEventObserver != nil {
-			c.rateLimitEventObserver(opts.Path, strings.ToUpper(opts.Method), hdrs, opts.Meta)
+			c.rateLimitEventObserver(opts.Path, strings.ToUpper(opts.Method), emptyRateLimits, opts.Meta)
 		}
 	}
 
 	var raw []byte
 	raw, err = io.ReadAll(httpResp.Body)
 	if err != nil {
-		return resp, rateLimits, okxerr.New(okxerr.ErrorKindNetwork, "", "rest: read body", err)
+		return resp, emptyRateLimits, okxerr.New(okxerr.ErrorKindNetwork, "", "rest: read body", err)
 	}
 
 	c.logger.Debug(
@@ -254,7 +260,7 @@ func (c *Client) Do(ctx context.Context, opts Options) (Response, map[string]str
 
 	if httpResp.StatusCode >= 200 && httpResp.StatusCode < 300 {
 		if err = codec.Unmarshal(raw, &resp); err != nil {
-			return resp, rateLimits, okxerr.New(okxerr.ErrorKindUnknown, "", "rest: parse response", err)
+			return resp, emptyRateLimits, okxerr.New(okxerr.ErrorKindUnknown, "", "rest: parse response", err)
 		}
 		// OKX top-level code semantics:
 		//   "0"      — success;
@@ -265,25 +271,25 @@ func (c *Client) Do(ctx context.Context, opts Options) (Response, map[string]str
 		// can extract per-entry sCode/sMsg and build a precise error. Without
 		// this the user sees the useless "All operations failed".
 		if resp.Code != "" && resp.Code != "0" && resp.Code != "1" && resp.Code != "2" {
-			return resp, rateLimits, &okxerr.Error{
+			return resp, emptyRateLimits, &okxerr.Error{
 				Kind:       okxerr.MapOKXCode(resp.Code, resp.Msg),
 				HTTPStatus: httpResp.StatusCode,
 				OKXCode:    resp.Code,
 				Message:    resp.Msg,
 			}
 		}
-		return resp, rateLimits, nil
+		return resp, emptyRateLimits, nil
 	}
 
 	if err = codec.Unmarshal(raw, &resp); err == nil && resp.Code != "" {
-		return resp, rateLimits, &okxerr.Error{
+		return resp, emptyRateLimits, &okxerr.Error{
 			Kind:       okxerr.MapOKXCode(resp.Code, resp.Msg),
 			HTTPStatus: httpResp.StatusCode,
 			OKXCode:    resp.Code,
 			Message:    resp.Msg,
 		}
 	}
-	return resp, rateLimits, &okxerr.Error{
+	return resp, emptyRateLimits, &okxerr.Error{
 		Kind:       okxerr.MapHTTPStatus(httpResp.StatusCode),
 		HTTPStatus: httpResp.StatusCode,
 		Message:    truncate(string(raw), 256),
@@ -361,23 +367,6 @@ func classifyTransportError(err error) error {
 		return okxerr.New(okxerr.ErrorKindNetwork, "", "rest: deadline exceeded", err)
 	}
 	return okxerr.New(okxerr.ErrorKindNetwork, "", "rest: transport error", err)
-}
-
-// collectRateLimitHeaders collects a fixed set of rate-limit headers.
-func collectRateLimitHeaders(h http.Header) map[string]string {
-	var out map[string]string
-	var v string
-	for _, key := range rateLimitHeaders {
-		v = h.Get(key)
-		if v == "" {
-			continue
-		}
-		if out == nil {
-			out = make(map[string]string, 4)
-		}
-		out[key] = v
-	}
-	return out
 }
 
 func truncate(s string, n int) string {

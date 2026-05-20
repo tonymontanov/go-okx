@@ -89,11 +89,24 @@ type RateLimitEvent struct {
 	// Method — HTTP request method in upper case (GET / POST / ...).
 	Method string
 
-	// Headers — rate-limit headers returned by OKX in the response:
-	// ratelimit-limit / ratelimit-remaining / ratelimit-reset and their
-	// x-ratelimit-* variants. As of v2.2.0 the OKX REST API does not return
-	// these headers — the map will be empty but always non-nil. The SDK
-	// already forwards them as soon as OKX starts sending them.
+	// Headers — DEPRECATED since v2.5.1: always an empty non-nil
+	// `map[string]string{}`. Kept in the struct for backwards source-level
+	// compatibility with v2.2.0+ subscribers.
+	//
+	// Why empty: empirical observation across all OKX REST endpoints
+	// (trading, account, market-data) plus the absence of any documented
+	// `ratelimit-*` / `OK-RateLimit-*` headers in OKX docs-v5 confirms that
+	// OKX does not return rate-limit response headers. The SDK previously
+	// maintained an allowlist of conventional IETF header names "in case
+	// OKX adopts them"; that allowlist has been removed in v2.5.1 because
+	// it created a misleading impression that the field could ever be
+	// populated.
+	//
+	// What to use instead: poll GET /api/v5/account/rate-limit via
+	// `spot.Account().GetAccountRateLimit(ctx)` or
+	// `swap.Account().GetAccountRateLimit(ctx)`. OKX updates the underlying
+	// numbers once per day at 08:00 UTC, so a daily refresh shortly after
+	// that is enough to keep an external rate-limiter calibrated.
 	Headers map[string]string
 
 	// OrderCount — number of orders CREATED/AMENDED/CANCELLED by this request:

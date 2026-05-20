@@ -377,8 +377,11 @@ func TestContract_GetOpenOrders(t *testing.T) {
 	if !orders[0].Price.Equal(mustDec("40000")) {
 		t.Fatalf("Price: got %v", orders[0].Price)
 	}
-	if orders[0].RateLimits["ratelimit-remaining"] != "59" {
-		t.Fatalf("rate-limit header missing, got %v", orders[0].RateLimits)
+	if orders[0].RateLimits == nil {
+		t.Fatal("RateLimits must be non-nil")
+	}
+	if len(orders[0].RateLimits) != 0 {
+		t.Fatalf("RateLimits must be empty since v2.5.1 (OKX does not return rate-limit headers), got %v", orders[0].RateLimits)
 	}
 }
 
@@ -411,8 +414,11 @@ func TestContract_CreateOrder_HappyPath(t *testing.T) {
 	if info.ClientOrderID != "abc" {
 		t.Fatalf("ClientOrderID: got %q", info.ClientOrderID)
 	}
-	if info.RateLimits["ratelimit-remaining"] != "59" {
-		t.Fatalf("missing rate-limit header, got %v", info.RateLimits)
+	if info.RateLimits == nil {
+		t.Fatal("RateLimits must be non-nil")
+	}
+	if len(info.RateLimits) != 0 {
+		t.Fatalf("RateLimits must be empty since v2.5.1 (OKX does not return rate-limit headers), got %v", info.RateLimits)
 	}
 	// mapping must be remembered
 	var ord string
@@ -492,6 +498,83 @@ func TestContract_CancelOrder(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatalf("CancelOrder: %v", err)
+	}
+}
+
+// TestContract_GetAccountRateLimit covers the parse path for the new
+// GET /api/v5/account/rate-limit endpoint introduced in v2.5.1, symmetric to
+// the spot profile (same OKX endpoint, same response shape).
+func TestContract_GetAccountRateLimit(t *testing.T) {
+	var fixtureVIP string = `{
+		"code":"0","msg":"",
+		"data":[{
+			"accRateLimit":"1500",
+			"nextAccRateLimit":"2000",
+			"fillRatio":"0.65",
+			"mainFillRatio":"0.72",
+			"ts":"1700000000000"
+		}]
+	}`
+	var _, client = mockOKX(t, map[string]string{
+		"/api/v5/account/rate-limit": fixtureVIP,
+	})
+	var info types.AccountRateLimitInfo
+	var err error
+	info, err = swapOf(client).Account().GetAccountRateLimit(context.Background())
+	if err != nil {
+		t.Fatalf("GetAccountRateLimit: %v", err)
+	}
+	if info.AccRateLimit != 1500 {
+		t.Fatalf("AccRateLimit = %d, want 1500", info.AccRateLimit)
+	}
+	if info.NextAccRateLimit != 2000 {
+		t.Fatalf("NextAccRateLimit = %d, want 2000", info.NextAccRateLimit)
+	}
+	if !info.FillRatio.Equal(mustDec("0.65")) {
+		t.Fatalf("FillRatio = %s, want 0.65", info.FillRatio)
+	}
+	if !info.MainFillRatio.Equal(mustDec("0.72")) {
+		t.Fatalf("MainFillRatio = %s, want 0.72", info.MainFillRatio)
+	}
+	if info.Ts != 1700000000000 {
+		t.Fatalf("Ts = %d, want 1700000000000", info.Ts)
+	}
+}
+
+// TestContract_GetAccountRateLimit_NonVIP5 mimics the non-VIP5 response shape
+// (only AccRateLimit populated; the rest come back as empty strings and must
+// parse as zero values).
+func TestContract_GetAccountRateLimit_NonVIP5(t *testing.T) {
+	var fixture string = `{
+		"code":"0","msg":"",
+		"data":[{
+			"accRateLimit":"1000",
+			"nextAccRateLimit":"",
+			"fillRatio":"",
+			"mainFillRatio":"",
+			"ts":"1700000001000"
+		}]
+	}`
+	var _, client = mockOKX(t, map[string]string{
+		"/api/v5/account/rate-limit": fixture,
+	})
+	var info types.AccountRateLimitInfo
+	var err error
+	info, err = swapOf(client).Account().GetAccountRateLimit(context.Background())
+	if err != nil {
+		t.Fatalf("GetAccountRateLimit: %v", err)
+	}
+	if info.AccRateLimit != 1000 {
+		t.Fatalf("AccRateLimit = %d, want 1000", info.AccRateLimit)
+	}
+	if info.NextAccRateLimit != 0 {
+		t.Fatalf("NextAccRateLimit = %d, want 0 (non-VIP5 sentinel)", info.NextAccRateLimit)
+	}
+	if !info.FillRatio.IsZero() {
+		t.Fatalf("FillRatio = %s, want zero", info.FillRatio)
+	}
+	if !info.MainFillRatio.IsZero() {
+		t.Fatalf("MainFillRatio = %s, want zero", info.MainFillRatio)
 	}
 }
 

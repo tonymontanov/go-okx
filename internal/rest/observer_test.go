@@ -9,8 +9,11 @@ api.okx.com — giving full control over responses and headers without network a
 Coverage:
   - Observer is called exactly once per REST call;
   - receives the correct endpoint (opts.Path without query);
-  - receives actual rate-limit headers (lowercase and x- variants);
-  - receives a non-nil map even when the server returned no headers;
+  - headers map is ALWAYS empty non-nil — even when the test server returns
+    rate-limit headers, since v2.5.1 the SDK no longer reads them (OKX REST
+    does not actually emit ratelimit-* headers, see internal/rest/client.go
+    file header);
+  - observer fires on HTTP errors too;
   - nil-observer is safe and does not cause a panic.
 */
 
@@ -41,11 +44,21 @@ func newObserverTestClient(t *testing.T, srv *httptest.Server, observer func(str
 	)
 }
 
-func TestRateLimitObserver_CalledWithEndpointAndHeaders(t *testing.T) {
+// TestRateLimitObserver_CalledWithEndpointAndEmptyHeaders verifies the v2.5.1
+// contract: even when the test server returns conventional ratelimit-* headers
+// (mimicking what some other exchanges do), the SDK delivers an empty non-nil
+// map to the observer. OKX itself never emits these headers in practice; the
+// SDK intentionally does not forward them so that consumers do not develop a
+// false dependency on a field that is permanently empty in prod.
+func TestRateLimitObserver_CalledWithEndpointAndEmptyHeaders(t *testing.T) {
 	var srv *httptest.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Server returns ratelimit-* headers; SDK must still deliver an empty
+		// map (post-v2.5.1 behaviour).
 		w.Header().Set("ratelimit-limit", "60")
 		w.Header().Set("ratelimit-remaining", "57")
 		w.Header().Set("ratelimit-reset", "1")
+		w.Header().Set("x-ratelimit-remaining", "57")
+		w.Header().Set("OK-RateLimit-Remaining", "57")
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"code":"0","msg":"","data":[]}`))
@@ -73,20 +86,17 @@ func TestRateLimitObserver_CalledWithEndpointAndHeaders(t *testing.T) {
 	if gotEndpoint != "/api/v5/trade/order" {
 		t.Fatalf("endpoint = %q, want /api/v5/trade/order", gotEndpoint)
 	}
-	if gotHeaders["ratelimit-limit"] != "60" {
-		t.Fatalf("ratelimit-limit = %q, want 60", gotHeaders["ratelimit-limit"])
+	if gotHeaders == nil {
+		t.Fatal("headers must be non-nil")
 	}
-	if gotHeaders["ratelimit-remaining"] != "57" {
-		t.Fatalf("ratelimit-remaining = %q, want 57", gotHeaders["ratelimit-remaining"])
-	}
-	if gotHeaders["ratelimit-reset"] != "1" {
-		t.Fatalf("ratelimit-reset = %q, want 1", gotHeaders["ratelimit-reset"])
+	if len(gotHeaders) != 0 {
+		t.Fatalf("headers must be empty (server-emitted ratelimit-* must NOT leak through after v2.5.1), got %v", gotHeaders)
 	}
 }
 
 // TestRateLimitObserver_CalledOnHTTPError — observer must fire even on 4xx/5xx
-// responses: rate-limit information on errors is especially important so that
-// the rate-limiter strategy can back off.
+// responses so the rate-limiter strategy can react (back off, log, increment
+// 50011/429 counters via Options.Meta etc.).
 func TestRateLimitObserver_CalledOnHTTPError(t *testing.T) {
 	var srv *httptest.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("ratelimit-remaining", "0")
@@ -110,14 +120,17 @@ func TestRateLimitObserver_CalledOnHTTPError(t *testing.T) {
 	if got := atomic.LoadInt32(&calls); got != 1 {
 		t.Fatalf("observer calls = %d, want 1 (even on 429)", got)
 	}
-	if gotHeaders["ratelimit-remaining"] != "0" {
-		t.Fatalf("ratelimit-remaining = %q, want 0", gotHeaders["ratelimit-remaining"])
+	if gotHeaders == nil {
+		t.Fatal("headers must be non-nil on HTTP error too")
+	}
+	if len(gotHeaders) != 0 {
+		t.Fatalf("headers must be empty on HTTP error too, got %v", gotHeaders)
 	}
 }
 
 // TestRateLimitObserver_NonNilMapWhenNoHeaders — public docstring contract:
-// headers are always non-nil even if the server returned no rate-limit
-// headers (e.g. for unauthenticated public endpoints).
+// when the server returns no headers at all (typical for OKX), the observer
+// still receives an empty non-nil map.
 func TestRateLimitObserver_NonNilMapWhenNoHeaders(t *testing.T) {
 	var srv *httptest.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

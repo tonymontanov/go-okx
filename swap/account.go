@@ -390,6 +390,77 @@ func (a *AccountClient) SetLeverage(ctx context.Context, instID string, leverage
 	return nil
 }
 
+// rawAccountRateLimit — raw OKX format of GET /api/v5/account/rate-limit.
+// All numerics arrive as strings; empty strings for fields that do not
+// apply to the caller's VIP tier (FillRatio / MainFillRatio / NextAccRateLimit
+// for sub-VIP5 accounts).
+type rawAccountRateLimit struct {
+	AccRateLimit     string `json:"accRateLimit"`
+	NextAccRateLimit string `json:"nextAccRateLimit"`
+	FillRatio        string `json:"fillRatio"`
+	MainFillRatio    string `json:"mainFillRatio"`
+	Ts               string `json:"ts"`
+}
+
+/*
+GetAccountRateLimit returns the current live sub-account rate-limit numbers
+for the authenticated user, including the upcoming-period value and the
+fill-ratio metrics that drive OKX's VIP5+ dynamic-limit policy.
+
+ENDPOINT: GET /api/v5/account/rate-limit (signed, "query" rate-limit category).
+
+WHEN TO USE:
+This is OKX's official replacement for response-header rate-limit hints — the
+exchange does not return ratelimit-* headers, so an external rate-limiter
+that wants to track the live sub-account budget must poll this endpoint.
+OKX updates the underlying numbers once per day at 08:00 UTC, so a daily
+refresh shortly after that is enough; more frequent polling is wasteful.
+
+ERRORS:
+Standard OKX error mapping via okxerr.Error. The endpoint requires SIGNED
+credentials; an unauthenticated client will receive a 401-equivalent error.
+*/
+func (a *AccountClient) GetAccountRateLimit(ctx context.Context) (types.AccountRateLimitInfo, error) {
+	var resp rest.Response
+	var err error
+	resp, _, err = a.c.rest().Do(ctx, rest.Options{
+		Method: "GET",
+		Path:   "/api/v5/account/rate-limit",
+		Signed: true,
+		Meta: rest.RequestMeta{
+			Category: string(okx.RateLimitCategoryQuery),
+		},
+	})
+	if err != nil {
+		return types.AccountRateLimitInfo{}, err
+	}
+
+	var raws []rawAccountRateLimit
+	if err = resp.UnmarshalData(&raws); err != nil {
+		return types.AccountRateLimitInfo{}, okx.NewError(okx.ErrorKindUnknown, "", "account.GetAccountRateLimit: parse", err)
+	}
+	if len(raws) == 0 {
+		return types.AccountRateLimitInfo{}, nil
+	}
+	return convertAccountRateLimit(raws[0]), nil
+}
+
+// convertAccountRateLimit parses the raw OKX response into a typed view.
+// Empty strings yield zero values (decimal.Zero / int(0)), which is the
+// expected behaviour for fields that do not apply to non-VIP5 accounts.
+func convertAccountRateLimit(r rawAccountRateLimit) types.AccountRateLimitInfo {
+	var out types.AccountRateLimitInfo
+	var n int64
+	n, _ = codec.ParseInt64(r.AccRateLimit)
+	out.AccRateLimit = int(n)
+	n, _ = codec.ParseInt64(r.NextAccRateLimit)
+	out.NextAccRateLimit = int(n)
+	out.FillRatio, _ = codec.ParseDecimal(r.FillRatio)
+	out.MainFillRatio, _ = codec.ParseDecimal(r.MainFillRatio)
+	out.Ts, _ = codec.ParseInt64(r.Ts)
+	return out
+}
+
 /*
 SetPositionMode sets the account position mode (net_mode / long_short_mode).
 Applies to the entire account. The SDK defaults to net_mode.

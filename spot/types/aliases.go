@@ -107,6 +107,10 @@ type Fill = commontypes.Fill
 // FillsQuery — parameters for fills retrieval (REST). See commontypes.FillsQuery.
 type FillsQuery = commontypes.FillsQuery
 
+// AccountRateLimitInfo — response of GET /api/v5/account/rate-limit.
+// See commontypes.AccountRateLimitInfo and types/account-rate-limit.go.
+type AccountRateLimitInfo = commontypes.AccountRateLimitInfo
+
 // Shared data models — orderbook level/snapshot, candles, agg trades.
 // Format is identical for spot and swap (REST/WS endpoints are shared), so
 // we reuse via aliases from the common package.

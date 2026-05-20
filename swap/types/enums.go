@@ -153,3 +153,7 @@ type Fill = commontypes.Fill
 
 // FillsQuery — fill query parameters (REST). See commontypes.FillsQuery.
 type FillsQuery = commontypes.FillsQuery
+
+// AccountRateLimitInfo — response of GET /api/v5/account/rate-limit.
+// See commontypes.AccountRateLimitInfo and types/account-rate-limit.go.
+type AccountRateLimitInfo = commontypes.AccountRateLimitInfo

@@ -140,8 +140,14 @@ func TestRateLimitEventObserver_ZeroMetaForUnannotatedRequest(t *testing.T) {
 // migration), both must be called. This provides correct backwards-compat:
 // existing subscribers continue to work unchanged and can migrate to the
 // event API gradually.
+//
+// Since v2.5.1 the headers map is always empty (see internal/rest/client.go),
+// so this test only asserts the call ORDER, not header content. Header
+// content for both observers is asserted as "empty non-nil" in observer_test.go.
 func TestRateLimitEventObserver_BothObserversFireInOrder(t *testing.T) {
 	var srv *httptest.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Server emits a ratelimit-* header to assert that v2.5.1 still
+		// ignores it (the test below expects empty maps regardless).
 		w.Header().Set("ratelimit-remaining", "42")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"code":"0","msg":"","data":[]}`))
@@ -149,11 +155,15 @@ func TestRateLimitEventObserver_BothObserversFireInOrder(t *testing.T) {
 	defer srv.Close()
 
 	var sequence []string
+	var legacyHeaders map[string]string
+	var eventHeaders map[string]string
 	var legacy = func(endpoint string, headers map[string]string) {
-		sequence = append(sequence, "legacy:"+endpoint+":"+headers["ratelimit-remaining"])
+		sequence = append(sequence, "legacy:"+endpoint)
+		legacyHeaders = headers
 	}
 	var event = func(endpoint, method string, headers map[string]string, meta RequestMeta) {
-		sequence = append(sequence, "event:"+endpoint+":"+headers["ratelimit-remaining"])
+		sequence = append(sequence, "event:"+endpoint)
+		eventHeaders = headers
 	}
 
 	var c *Client = newEventObserverTestClient(t, srv, legacy, event)
@@ -163,11 +173,17 @@ func TestRateLimitEventObserver_BothObserversFireInOrder(t *testing.T) {
 	}
 
 	var want []string = []string{
-		"legacy:/api/v5/trade/orders-pending:42",
-		"event:/api/v5/trade/orders-pending:42",
+		"legacy:/api/v5/trade/orders-pending",
+		"event:/api/v5/trade/orders-pending",
 	}
 	if !reflect.DeepEqual(sequence, want) {
 		t.Fatalf("observer call sequence = %v, want %v", sequence, want)
+	}
+	if legacyHeaders == nil || len(legacyHeaders) != 0 {
+		t.Fatalf("legacy headers must be empty non-nil since v2.5.1, got %v", legacyHeaders)
+	}
+	if eventHeaders == nil || len(eventHeaders) != 0 {
+		t.Fatalf("event headers must be empty non-nil since v2.5.1, got %v", eventHeaders)
 	}
 }
 
