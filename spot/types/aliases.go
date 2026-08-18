@@ -49,6 +49,7 @@ const (
 	OrderTypePostOnly = commontypes.OrderTypePostOnly
 	OrderTypeFOK      = commontypes.OrderTypeFOK
 	OrderTypeIOC      = commontypes.OrderTypeIOC
+	OrderTypeRPI      = commontypes.OrderTypeRPI
 )
 
 // TimeInForceType — TIF (Binance-style). See commontypes.TimeInForceType.
@@ -59,6 +60,7 @@ const (
 	TimeInForceTypeIOC = commontypes.TimeInForceTypeIOC
 	TimeInForceTypeFOK = commontypes.TimeInForceTypeFOK
 	TimeInForceTypeGTX = commontypes.TimeInForceTypeGTX
+	TimeInForceTypeRPI = commontypes.TimeInForceTypeRPI
 )
 
 // TdMode — order margin mode. See commontypes.TdMode.

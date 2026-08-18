@@ -300,6 +300,8 @@ func orderTypeFromTIF(tif types.TimeInForceType) types.OrderType {
 		return types.OrderTypeFOK
 	case types.TimeInForceTypeGTX:
 		return types.OrderTypePostOnly
+	case types.TimeInForceTypeRPI:
+		return types.OrderTypeRPI
 	case types.TimeInForceTypeGTC, "":
 		return types.OrderTypeLimit
 	default:

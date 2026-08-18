@@ -11,10 +11,10 @@ All values are string-typed enums that exactly match the OKX v5 protocol
 
 EXTRACTED FROM swap/types/enums.go:
   - SideType        — buy/sell.
-  - OrderType       — shared values (market/limit/post_only/fok/ioc).
+  - OrderType       — shared values (market/limit/post_only/fok/ioc/rpi).
                       OrderTypeOptimalLimitIOC stays in swap/types as
                       profile-specific (used only for market ClosePosition).
-  - TimeInForceType — GTC/IOC/FOK/PostOnly (Binance-style; mapped to
+  - TimeInForceType — GTC/IOC/FOK/GTX/RPI (Binance-style; mapped to
                       OKX OrderType in the SDK).
   - TdMode          — cross/isolated/cash. All three values are protocol constants;
                       cash — spot default, cross/isolated — swap default.
@@ -58,6 +58,9 @@ const (
 	OrderTypeFOK OrderType = "fok"
 	// OrderTypeIOC — immediate-or-cancel.
 	OrderTypeIOC OrderType = "ioc"
+	// OrderTypeRPI — Retail Price Improvement maker order (ordType=rpi).
+	// Post-only dedicated-MM liquidity; not a TimeInForce on the wire.
+	OrderTypeRPI OrderType = "rpi"
 )
 
 // TimeInForceType — TIF in core/types notation (Binance-style). Mapped to
@@ -73,6 +76,8 @@ const (
 	TimeInForceTypeFOK TimeInForceType = "FOK"
 	// TimeInForceTypeGTX — Post Only.
 	TimeInForceTypeGTX TimeInForceType = "GTX"
+	// TimeInForceTypeRPI — Retail Price Improvement (mapped to ordType=rpi).
+	TimeInForceTypeRPI TimeInForceType = "RPI"
 )
 
 // TdMode — margin mode for an order/position in OKX.

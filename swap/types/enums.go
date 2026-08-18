@@ -63,6 +63,8 @@ const (
 	OrderTypeFOK = commontypes.OrderTypeFOK
 	// OrderTypeIOC — immediate-or-cancel.
 	OrderTypeIOC = commontypes.OrderTypeIOC
+	// OrderTypeRPI — Retail Price Improvement maker order (ordType=rpi).
+	OrderTypeRPI = commontypes.OrderTypeRPI
 	// OrderTypeOptimalLimitIOC — SWAP-only market order (fills at best price + IOC,
 	// used by ClosePosition for market close). OKX returns an error for SPOT,
 	// so this constant lives here rather than in the common package.
@@ -81,6 +83,8 @@ const (
 	TimeInForceTypeFOK = commontypes.TimeInForceTypeFOK
 	// TimeInForceTypeGTX — Post Only.
 	TimeInForceTypeGTX = commontypes.TimeInForceTypeGTX
+	// TimeInForceTypeRPI — Retail Price Improvement (mapped to ordType=rpi).
+	TimeInForceTypeRPI = commontypes.TimeInForceTypeRPI
 )
 
 // TdMode — order/position margin mode in OKX. See commontypes.TdMode.
