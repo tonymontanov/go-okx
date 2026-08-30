@@ -13,6 +13,10 @@ FIELDS:
   - NewSize       — new size (optional).
   - NewPrice      — new price (optional).
   - RequestID     — req-id for OKX-side idempotency (optional).
+  - RPITakerAccess — rpiTakerAccess flag. OKX does NOT inherit the flag from the
+                    original order on amend: an amend request without it resets
+                    the order to non-RPI matching, so callers must re-specify it
+                    on every amend. The key is emitted only when true.
 
 INVARIANTS:
   - Exactly one identifier must be set: OrderID or ClientOrderID.
@@ -25,10 +29,11 @@ import "github.com/shopspring/decimal"
 
 // ModifyOrderRequest — SWAP order amend request.
 type ModifyOrderRequest struct {
-	InstID        string
-	OrderID       string
-	ClientOrderID string
-	NewSize       decimal.Decimal
-	NewPrice      decimal.Decimal
-	RequestID     string
+	InstID         string
+	OrderID        string
+	ClientOrderID  string
+	NewSize        decimal.Decimal
+	NewPrice       decimal.Decimal
+	RequestID      string
+	RPITakerAccess bool
 }

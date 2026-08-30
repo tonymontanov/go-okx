@@ -22,4 +22,10 @@ type ModifyOrderRequest struct {
 	NewSize       decimal.Decimal
 	NewPrice      decimal.Decimal
 	RequestID     string
+
+	// RPITakerAccess — rpiTakerAccess flag. OKX does NOT inherit the flag
+	// from the original order on amend: an amend request without it resets
+	// the order to non-RPI matching, so callers must re-specify it on every
+	// amend. The key is emitted only when true.
+	RPITakerAccess bool
 }

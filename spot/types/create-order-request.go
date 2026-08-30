@@ -79,4 +79,11 @@ type CreateOrderRequest struct {
 
 	// Tag — broker tag (optional, for the OKX broker program).
 	Tag string
+
+	// RPITakerAccess — rpiTakerAccess flag: the order is eligible to match
+	// against RPI (Retail Price Improvement) liquidity. Applies to all
+	// standard order types; a speedbump applies on the exchange side. The
+	// key is emitted only when true. NOT inherited on amend — see
+	// ModifyOrderRequest.RPITakerAccess.
+	RPITakerAccess bool
 }

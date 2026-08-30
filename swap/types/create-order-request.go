@@ -27,6 +27,11 @@ FIELDS:
   - PosSide        — position side. Empty → "net" in net-mode (default).
   - Ccy            — margin currency for cross/isolated. Empty → derived from instrument.
   - Tag            — broker tag (optional, for the OKX broker programme).
+  - RPITakerAccess — rpiTakerAccess flag: the order is eligible to match against
+                     RPI (Retail Price Improvement) liquidity. Applies to all
+                     standard order types; a speedbump applies on the exchange
+                     side. The key is emitted only when true. NOT inherited on
+                     amend — see ModifyOrderRequest.RPITakerAccess.
 
 INVARIANTS:
   - For OrderType=="market" the Price field is ignored when building the request.
@@ -40,16 +45,17 @@ import "github.com/shopspring/decimal"
 
 // CreateOrderRequest — SWAP order creation request.
 type CreateOrderRequest struct {
-	InstID        string
-	Side          SideType
-	OrderType     OrderType
-	TimeInForce   TimeInForceType
-	Size          decimal.Decimal
-	Price         decimal.Decimal
-	ClientOrderID string
-	ReduceOnly    bool
-	TdMode        TdMode
-	PosSide       PosSide
-	Ccy           string
-	Tag           string
+	InstID         string
+	Side           SideType
+	OrderType      OrderType
+	TimeInForce    TimeInForceType
+	Size           decimal.Decimal
+	Price          decimal.Decimal
+	ClientOrderID  string
+	ReduceOnly     bool
+	TdMode         TdMode
+	PosSide        PosSide
+	Ccy            string
+	Tag            string
+	RPITakerAccess bool
 }

@@ -287,6 +287,11 @@ func (t *TradingClient) buildCreateOrderBody(req types.CreateOrderRequest) (map[
 	if req.Tag != "" {
 		body["tag"] = req.Tag
 	}
+	// rpiTakerAccess is emitted only when true; absent-key keeps legacy
+	// behaviour intact for accounts without RPI taker access.
+	if req.RPITakerAccess {
+		body["rpiTakerAccess"] = true
+	}
 
 	return body, nil
 }
@@ -349,6 +354,12 @@ func buildAmendOrderBody(req types.ModifyOrderRequest) (map[string]any, error) {
 	}
 	if req.RequestID != "" {
 		body["reqId"] = req.RequestID
+	}
+	// OKX does not inherit rpiTakerAccess on amend: the flag must be
+	// re-specified on every amend request, otherwise the order silently
+	// falls back to non-RPI matching.
+	if req.RPITakerAccess {
+		body["rpiTakerAccess"] = true
 	}
 	return body, nil
 }
@@ -705,6 +716,10 @@ func (t *TradingClient) modifyBatchChunk(ctx context.Context, chunk []types.Modi
 		}
 		if r.RequestID != "" {
 			b["reqId"] = r.RequestID
+		}
+		// rpiTakerAccess is not inherited on amend — re-emit per request.
+		if r.RPITakerAccess {
+			b["rpiTakerAccess"] = true
 		}
 		bodies = append(bodies, b)
 	}
