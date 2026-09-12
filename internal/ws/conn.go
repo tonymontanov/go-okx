@@ -245,6 +245,40 @@ func (c *Conn) Subscribe(sub *Subscription) error {
 	return c.sendSubscribe(socket, sub)
 }
 
+// SubscribeWithReset registers the subscription like Subscribe and additionally
+// guarantees that sub.Reset (when set) runs exactly once for EVERY connection the
+// subscription is sent on, including the current one: if the socket is already
+// established, Reset is called here — under the connection lock, before the
+// subscribe command goes out — otherwise connectAndRun calls it on connect, as it
+// does for every registered subscription, and again on each reconnect.
+//
+// Subscribe leaves the already-connected case without a Reset call. That is fine
+// for order-book channels (the first push after subscribe is a full snapshot) but
+// not for channels without an initial snapshot (orders: "data will not be pushed
+// when first subscribed"), where the caller must reseed its state from REST on
+// every connection and needs one unambiguous signal per connection.
+//
+// Reset runs on the connection goroutine under c.mu: it must be fast and
+// non-blocking (signal a channel; never do network I/O inside).
+func (c *Conn) SubscribeWithReset(sub *Subscription) error {
+	if sub == nil || sub.Channel == "" || sub.Handler == nil {
+		return okxerr.New(okxerr.ErrorKindInvalidRequest, "", "ws: invalid subscription", nil)
+	}
+	c.mu.Lock()
+	c.subs[sub.key()] = sub
+	var socket *websocket.Conn = c.socket
+	if socket != nil && sub.Reset != nil {
+		sub.Reset()
+	}
+	c.mu.Unlock()
+	c.cSub.Inc()
+
+	if socket == nil {
+		return nil // connectAndRun will call Reset and send subscribe on connect
+	}
+	return c.sendSubscribe(socket, sub)
+}
+
 // Unsubscribe removes the subscription from the registry and (if a socket exists) sends unsubscribe.
 func (c *Conn) Unsubscribe(channel, instID string) error {
 	var key string

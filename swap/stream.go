@@ -571,19 +571,63 @@ func (s *StreamClient) WatchPosition(
 	return nil
 }
 
-// rawOrderPush — push data from the orders channel.
+// rawOrderPush — push data from the orders channel. The fill-related fields
+// (fillSz, fillPx, tradeId, execType, fillTime, fillFee, fillFeeCcy, fillPnl)
+// describe the CURRENT update only (OKX: "for the current update"): a push
+// without a trade (place, amend, cancel) carries fillSz="0" and tradeId="".
+// amendResult / cancelSource are "" unless the update is an amendment / a
+// cancellation.
 type rawOrderPush struct {
-	InstID    string `json:"instId"`
-	OrdID     string `json:"ordId"`
-	ClOrdID   string `json:"clOrdId"`
-	OrdType   string `json:"ordType"`
-	Side      string `json:"side"`
-	Px        string `json:"px"`
-	Sz        string `json:"sz"`
-	AccFillSz string `json:"accFillSz"`
-	State     string `json:"state"`
-	CTime     string `json:"cTime"`
-	UTime     string `json:"uTime"`
+	InstID       string `json:"instId"`
+	OrdID        string `json:"ordId"`
+	ClOrdID      string `json:"clOrdId"`
+	OrdType      string `json:"ordType"`
+	Side         string `json:"side"`
+	Px           string `json:"px"`
+	Sz           string `json:"sz"`
+	AccFillSz    string `json:"accFillSz"`
+	State        string `json:"state"`
+	CTime        string `json:"cTime"`
+	UTime        string `json:"uTime"`
+	FillSz       string `json:"fillSz"`
+	FillPx       string `json:"fillPx"`
+	TradeID      string `json:"tradeId"`
+	ExecType     string `json:"execType"`
+	FillTime     string `json:"fillTime"`
+	FillFee      string `json:"fillFee"`
+	FillFeeCcy   string `json:"fillFeeCcy"`
+	FillPnl      string `json:"fillPnl"`
+	AmendResult  string `json:"amendResult"`
+	CancelSource string `json:"cancelSource"`
+}
+
+// parseOrderPush maps one orders-channel push row to types.OrderInfo. Numeric
+// fields OKX sends as "" (px of a market order, fillPx without a fill) parse to
+// zero; parse errors are deliberately ignored, as in every other push parser.
+func parseOrderPush(p rawOrderPush) types.OrderInfo {
+	var info types.OrderInfo
+	info.OrderID = p.OrdID
+	info.ClientOrderID = p.ClOrdID
+	info.InstID = p.InstID
+	info.Side = types.SideType(p.Side)
+	info.OrderType = types.OrderType(p.OrdType)
+	info.State = types.ParseOrderState(p.State)
+	info.Price, _ = codec.ParseDecimal(p.Px)
+	info.Size, _ = codec.ParseDecimal(p.Sz)
+	info.FilledSize, _ = codec.ParseDecimal(p.AccFillSz)
+	info.CreatedAtMs, _ = codec.ParseInt64(p.CTime)
+	info.UpdatedAtMs, _ = codec.ParseInt64(p.UTime)
+	info.FillSize, _ = codec.ParseDecimal(p.FillSz)
+	info.FillPrice, _ = codec.ParseDecimal(p.FillPx)
+	info.TradeID = p.TradeID
+	info.ExecType = p.ExecType
+	info.FillTimeMs, _ = codec.ParseInt64(p.FillTime)
+	info.FillFee, _ = codec.ParseDecimal(p.FillFee)
+	info.FillFeeCcy = p.FillFeeCcy
+	info.FillPnl, _ = codec.ParseDecimal(p.FillPnl)
+	info.AmendResult = p.AmendResult
+	info.CancelSource = p.CancelSource
+	return info
 }
 
 // WatchAccount — account channel (private). Each push message contains a full
@@ -630,13 +674,52 @@ func (s *StreamClient) WatchAccount(
 }
 
 // WatchOpenOrders — orders channel (private). Callback receives the list of
-// orders sent in a single push (one or multiple simultaneously).
+// orders sent in a single push (one or multiple simultaneously). Each OrderInfo
+// also carries the per-update execution fields (FillSize, FillPrice, TradeID,
+// ExecType, FillTimeMs, FillFee, FillFeeCcy, FillPnl, AmendResult, CancelSource)
+// — see types.OrderInfo.
 func (s *StreamClient) WatchOpenOrders(
 	ctx context.Context, instID string,
 	handler func([]types.OrderInfo), errHandler func(error),
 ) error {
+	return s.watchOrders(ctx, "stream.WatchOpenOrders", instID, handler, nil, errHandler)
+}
+
+/*
+WatchOpenOrdersWithReset — the same orders subscription as WatchOpenOrders plus a
+per-connection reset hook. onReset runs exactly once for every connection the
+subscription is sent on, BEFORE the subscribe command goes out: synchronously at
+subscription time if the private socket is already connected, otherwise on the
+first connect, and again on every reconnect (ws.Conn.SubscribeWithReset).
+
+WHY: the orders channel has no initial snapshot ("data will not be pushed when
+first subscribed") and updates missed during a disconnect are never replayed, so
+the hook is the caller's one unambiguous signal per connection to reseed its
+open-orders state from REST.
+
+onReset is invoked on the connection goroutine under the connection lock: keep
+it fast and non-blocking (signal a channel; never call REST from it). A nil
+onReset degrades to WatchOpenOrders.
+
+LIMITATION: ws.Conn keys subscriptions by channel+instId, so a later
+WatchOpenOrders / WatchOpenOrdersWithReset for the same instId replaces the
+earlier handler — one orders subscriber per instId per client.
+*/
+func (s *StreamClient) WatchOpenOrdersWithReset(
+	ctx context.Context, instID string,
+	handler func([]types.OrderInfo), onReset func(), errHandler func(error),
+) error {
+	return s.watchOrders(ctx, "stream.WatchOpenOrdersWithReset", instID, handler, onReset, errHandler)
+}
+
+// watchOrders — shared body of WatchOpenOrders / WatchOpenOrdersWithReset.
+// caller is the label used in error messages and parse warnings.
+func (s *StreamClient) watchOrders(
+	ctx context.Context, caller, instID string,
+	handler func([]types.OrderInfo), onReset func(), errHandler func(error),
+) error {
 	if !s.c.signerEnabled() {
-		var err error = okx.NewError(okx.ErrorKindAuth, "", "stream.WatchOpenOrders: credentials required", nil)
+		var err error = okx.NewError(okx.ErrorKindAuth, "", caller+": credentials required", nil)
 		if errHandler != nil {
 			errHandler(err)
 		}
@@ -646,32 +729,20 @@ func (s *StreamClient) WatchOpenOrders(
 		Channel:  "orders",
 		InstType: "SWAP",
 		InstID:   instID,
+		Reset:    onReset,
 		Handler: func(_ string, payload []byte) {
 			var pushes []rawOrderPush
 			if err := codec.Unmarshal(payload, &pushes); err != nil {
-				s.c.logger().Warn("stream.WatchOpenOrders: parse", okx.Err(err))
+				s.c.logger().Warn(caller+": parse", okx.Err(err))
 				return
 			}
 			var out []types.OrderInfo = make([]types.OrderInfo, 0, len(pushes))
 			var i int
 			for i = 0; i < len(pushes); i++ {
-				var p rawOrderPush = pushes[i]
-				if instID != "" && p.InstID != instID {
+				if instID != "" && pushes[i].InstID != instID {
 					continue
 				}
-				var info types.OrderInfo
-				info.OrderID = p.OrdID
-				info.ClientOrderID = p.ClOrdID
-				info.InstID = p.InstID
-				info.Side = types.SideType(p.Side)
-				info.OrderType = types.OrderType(p.OrdType)
-				info.State = types.ParseOrderState(p.State)
-				info.Price, _ = codec.ParseDecimal(p.Px)
-				info.Size, _ = codec.ParseDecimal(p.Sz)
-				info.FilledSize, _ = codec.ParseDecimal(p.AccFillSz)
-				info.CreatedAtMs, _ = codec.ParseInt64(p.CTime)
-				info.UpdatedAtMs, _ = codec.ParseInt64(p.UTime)
-				out = append(out, info)
+				out = append(out, parseOrderPush(pushes[i]))
 			}
 			if len(out) > 0 {
 				handler(out)
@@ -679,7 +750,13 @@ func (s *StreamClient) WatchOpenOrders(
 		},
 	}
 	s.c.privateConn().Start(ctx)
-	if err := s.c.privateConn().Subscribe(sub); err != nil {
+	var err error
+	if onReset != nil {
+		err = s.c.privateConn().SubscribeWithReset(sub)
+	} else {
+		err = s.c.privateConn().Subscribe(sub)
+	}
+	if err != nil {
 		if errHandler != nil {
 			errHandler(err)
 		}
