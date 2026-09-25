@@ -32,10 +32,23 @@ import "github.com/shopspring/decimal"
 
 // SymbolInfo — SWAP instrument specification.
 type SymbolInfo struct {
-	InstID            string
-	BaseCcy           string
-	QuoteCcy          string
-	SettleCcy         string
+	InstID    string
+	BaseCcy   string
+	QuoteCcy  string
+	SettleCcy string
+	// Underlying — the venue's `uly` field: the index / underlying id of the
+	// swap ("BTC-USDT" for BTC-USDT-SWAP, "BTC-USD" for BTC-USD-SWAP). On the
+	// live venue baseCcy / quoteCcy are EMPTY for SWAP instruments (they are
+	// filled only for SPOT / MARGIN), so this is the only way to address the
+	// index-price channel without parsing the instId string.
+	Underlying string
+	// CtType — the venue's `ctType`: "linear" (USDT/USDC-margined) or
+	// "inverse" (coin-margined). Empty when the venue omits the field.
+	CtType string
+	// CtValCcy — the venue's `ctValCcy`: the currency the contract value
+	// (CtVal) is expressed in — the base coin on linear swaps, the quote
+	// currency (USD) on inverse swaps.
+	CtValCcy          string
 	CtVal             decimal.Decimal
 	CtMult            decimal.Decimal
 	TickSize          decimal.Decimal

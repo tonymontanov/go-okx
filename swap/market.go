@@ -47,6 +47,9 @@ type rawInstrumentEntry struct {
 	BaseCcy   string `json:"baseCcy"`
 	QuoteCcy  string `json:"quoteCcy"`
 	SettleCcy string `json:"settleCcy"`
+	Uly       string `json:"uly"`
+	CtType    string `json:"ctType"`
+	CtValCcy  string `json:"ctValCcy"`
 	CtVal     string `json:"ctVal"`
 	CtMult    string `json:"ctMult"`
 	TickSz    string `json:"tickSz"`
@@ -99,6 +102,9 @@ func (m *MarketDataClient) GetSymbolInfo(ctx context.Context, instID string) (ty
 	info.BaseCcy = r.BaseCcy
 	info.QuoteCcy = r.QuoteCcy
 	info.SettleCcy = r.SettleCcy
+	info.Underlying = r.Uly
+	info.CtType = r.CtType
+	info.CtValCcy = r.CtValCcy
 	info.CtVal, _ = codec.ParseDecimal(r.CtVal)
 	info.CtMult, _ = codec.ParseDecimal(r.CtMult)
 	info.TickSize, _ = codec.ParseDecimal(r.TickSz)
@@ -137,10 +143,10 @@ func decimalScale(s string) int {
 // rawOrderBookResponse — raw response from /market/books. OKX returns an array
 // of one element (for compatibility with bulk endpoints).
 type rawOrderBookResponse struct {
-	Asks [][]string `json:"asks"`
-	Bids [][]string `json:"bids"`
-	Ts   string     `json:"ts"`
-	SeqID *int64    `json:"seqId,omitempty"`
+	Asks  [][]string `json:"asks"`
+	Bids  [][]string `json:"bids"`
+	Ts    string     `json:"ts"`
+	SeqID *int64     `json:"seqId,omitempty"`
 }
 
 /*
