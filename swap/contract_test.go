@@ -94,8 +94,8 @@ func TestContract_GetSymbolInfo(t *testing.T) {
 	var fixture string = `{
 		"code":"0","msg":"",
 		"data":[{
-			"instId":"BTC-USDT-SWAP","baseCcy":"","quoteCcy":"",
-			"settleCcy":"USDT","ctVal":"0.01","ctMult":"1",
+			"instId":"BTC-USDT-SWAP","uly":"BTC-USDT","baseCcy":"","quoteCcy":"",
+			"settleCcy":"USDT","ctType":"linear","ctValCcy":"BTC","ctVal":"0.01","ctMult":"1",
 			"tickSz":"0.1","lotSz":"1","minSz":"1",
 			"maxLmtSz":"100000","maxMktSz":"12000"
 		}]
@@ -114,6 +114,20 @@ func TestContract_GetSymbolInfo(t *testing.T) {
 	}
 	if info.SettleCcy != "USDT" {
 		t.Fatalf("SettleCcy: got %q", info.SettleCcy)
+	}
+	// The venue leaves baseCcy/quoteCcy empty for SWAP rows: the index id and
+	// the contract kind must come from uly / ctType / ctValCcy.
+	if info.BaseCcy != "" || info.QuoteCcy != "" {
+		t.Fatalf("BaseCcy/QuoteCcy: got %q/%q, want empty (venue-faithful fixture)", info.BaseCcy, info.QuoteCcy)
+	}
+	if info.Underlying != "BTC-USDT" {
+		t.Fatalf("Underlying: got %q", info.Underlying)
+	}
+	if info.CtType != "linear" {
+		t.Fatalf("CtType: got %q", info.CtType)
+	}
+	if info.CtValCcy != "BTC" {
+		t.Fatalf("CtValCcy: got %q", info.CtValCcy)
 	}
 	if !info.TickSize.Equal(mustDec("0.1")) {
 		t.Fatalf("TickSize: got %v", info.TickSize)
