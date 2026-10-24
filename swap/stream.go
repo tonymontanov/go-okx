@@ -520,6 +520,20 @@ type rawPositionPush struct {
 	UTime   string `json:"uTime"`
 }
 
+// ReconnectPrivate forces a re-dial of the private WS connection: login and
+// every registered private subscription (positions / orders / account / fills)
+// are restored by the connection supervisor. For a caller-side watchdog that
+// sees the private stream silent while the socket is alive. nil when the
+// private connection was never established.
+func (s *StreamClient) ReconnectPrivate(reason string) error {
+	return s.c.privateConn().Reconnect(reason)
+}
+
+// ReconnectPublic — the same for the public WS connection.
+func (s *StreamClient) ReconnectPublic(reason string) error {
+	return s.c.publicConn().Reconnect(reason)
+}
+
 // WatchPosition — positions channel (private). Filters by instID if provided;
 // empty instID ⇒ all SWAP positions.
 func (s *StreamClient) WatchPosition(

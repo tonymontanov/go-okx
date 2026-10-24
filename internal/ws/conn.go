@@ -139,6 +139,7 @@ type Conn struct {
 	cReceived okxmet.Counter
 	cDropped  okxmet.Counter
 	cReconn   okxmet.Counter
+	cReconReq okxmet.Counter
 	cSub      okxmet.Counter
 	cPingErr  okxmet.Counter
 	cOpSent   okxmet.Counter
@@ -170,6 +171,7 @@ func NewConn(cfg Config, signer *auth.Signer, log okxlog.Logger, mf okxmet.Count
 		cReceived: mf.Counter("okx_ws_messages_received_total", "endpoint", endpoint),
 		cDropped:  mf.Counter("okx_ws_messages_dropped_total", "endpoint", endpoint),
 		cReconn:   mf.Counter("okx_ws_reconnects_total", "endpoint", endpoint),
+		cReconReq: mf.Counter("okx_ws_reconnect_requested_total", "endpoint", endpoint),
 		cSub:      mf.Counter("okx_ws_subscriptions_total", "endpoint", endpoint),
 		cPingErr:  mf.Counter("okx_ws_ping_failed_total", "endpoint", endpoint),
 		cOpSent:   mf.Counter("okx_ws_op_sent_total", "endpoint", endpoint),
@@ -180,11 +182,26 @@ func NewConn(cfg Config, signer *auth.Signer, log okxlog.Logger, mf okxmet.Count
 }
 
 // Start starts the background supervisor loop (connect→loop→reconnect). Returns
-// immediately; connection errors go to logs and metrics. Stops on ctx cancellation.
+// immediately; connection errors go to logs and metrics.
+//
+// The supervisor lives until Close(). ctx bounds only this call (its values are
+// kept, its cancellation is NOT): a Conn is shared by every Watch*/SendOp caller
+// of the client, so the lifetime of the socket cannot belong to whichever caller
+// happened to be first. Up to v2.8.0 it did — the supervisor ran on the first
+// caller's ctx and exited silently when that ctx was cancelled, while later
+// Subscribe calls kept queueing "until connect" with no error: on 2026-10-22 the
+// trading core cancelled its WatchPosition attempt to resubscribe and lost both
+// positions and orders pushes for 33 hours without a single log line.
+// To stop the connection call Close(); to force a re-dial call Reconnect.
 func (c *Conn) Start(ctx context.Context) {
 	c.startOnce.Do(func() {
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		if c.closed {
+			return // Close() came first: nothing to supervise
+		}
 		var supCtx context.Context
-		supCtx, c.cancel = context.WithCancel(ctx)
+		supCtx, c.cancel = context.WithCancel(context.WithoutCancel(ctx))
 		go c.supervise(supCtx)
 	})
 }
@@ -234,6 +251,10 @@ func (c *Conn) Subscribe(sub *Subscription) error {
 		return okxerr.New(okxerr.ErrorKindInvalidRequest, "", "ws: invalid subscription", nil)
 	}
 	c.mu.Lock()
+	if c.closed {
+		c.mu.Unlock()
+		return ErrConnClosed
+	}
 	c.subs[sub.key()] = sub
 	var socket *websocket.Conn = c.socket
 	c.mu.Unlock()
@@ -265,6 +286,10 @@ func (c *Conn) SubscribeWithReset(sub *Subscription) error {
 		return okxerr.New(okxerr.ErrorKindInvalidRequest, "", "ws: invalid subscription", nil)
 	}
 	c.mu.Lock()
+	if c.closed {
+		c.mu.Unlock()
+		return ErrConnClosed
+	}
 	c.subs[sub.key()] = sub
 	var socket *websocket.Conn = c.socket
 	if socket != nil && sub.Reset != nil {
@@ -297,6 +322,31 @@ func (c *Conn) Unsubscribe(channel, instID string) error {
 		return nil
 	}
 	return c.sendUnsubscribe(socket, sub)
+}
+
+// Reconnect closes the current socket so that the supervisor re-dials, logs in
+// again (private endpoint) and resends every registered subscription — the same
+// path as an exchange-side drop. It is the hook for a caller-side watchdog that
+// sees its stream silent while the socket still answers pings (a lost
+// subscription cannot be told apart from a quiet market from the inside).
+// Returns nil when no socket is established — the supervisor is already
+// reconnecting; ErrConnClosed after Close(). reason goes to the log only.
+func (c *Conn) Reconnect(reason string) error {
+	c.mu.RLock()
+	var closed bool = c.closed
+	var s *websocket.Conn = c.socket
+	c.mu.RUnlock()
+	if closed {
+		return ErrConnClosed
+	}
+	c.cReconReq.Inc()
+	c.logger.Info("ws: reconnect requested", okxlog.Str("url", c.cfg.URL), okxlog.Str("reason", reason))
+	if s == nil {
+		return nil
+	}
+	// readLoop gets a read error on the closed socket, connectAndRun returns it
+	// and supervise goes through backoff → dial → login → resubscribe.
+	return s.Close()
 }
 
 // Close gracefully shuts down Conn (cancels the supervise goroutine and closes
