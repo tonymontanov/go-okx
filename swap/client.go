@@ -95,6 +95,23 @@ func (c *Client) publicConn() *ws.Conn {
 	return c.publicWs
 }
 
+// Close shuts down the WS connections created so far (public and private):
+// supervisors stop, sockets close, later Subscribe/SendOp return ErrConnClosed.
+// Idempotent. REST needs no shutdown. Since v2.8.1 the connections live until
+// this call — not until the ctx of the first Watch* caller.
+func (c *Client) Close() error {
+	var firstErr error
+	if c.publicWs != nil {
+		firstErr = c.publicWs.Close()
+	}
+	if c.privateWs != nil {
+		if err := c.privateWs.Close(); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
+}
+
 // privateConn lazily creates and returns the private WS connection.
 func (c *Client) privateConn() *ws.Conn {
 	c.privateWsOnce.Do(func() {
