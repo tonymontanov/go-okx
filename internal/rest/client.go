@@ -144,6 +144,19 @@ type Client struct {
 	rateLimitEventObserver func(endpoint, method string, headers map[string]string, meta RequestMeta)
 }
 
+// HTTP/2 connection health check. Requests to a host share one HTTP/2
+// connection; without a health check Go keeps sending requests into a
+// connection whose peer went silent (socket open, no frames arriving — a
+// stalled proxy flow, a dropped NAT entry) and every request times out until
+// the connection dies on its own, which can take minutes. A PING sent after
+// http2PingAfterIdle without any incoming frame and left unanswered for
+// http2PingTimeout closes the connection; the next request dials a new one.
+// An idle pooled connection costs one PING frame per http2PingAfterIdle.
+const (
+	http2PingAfterIdle = 5 * time.Second
+	http2PingTimeout   = 3 * time.Second
+)
+
 // NewClient creates a REST client.
 func NewClient(baseURL string, signer *auth.Signer, cfg Config, ua string, log okxlog.Logger) *Client {
 	if log == nil {
@@ -154,6 +167,10 @@ func NewClient(baseURL string, signer *auth.Signer, cfg Config, ua string, log o
 		MaxIdleConnsPerHost: cfg.MaxIdleConnsPerHost,
 		IdleConnTimeout:     cfg.IdleConnTimeout,
 		ForceAttemptHTTP2:   true,
+		HTTP2: &http.HTTP2Config{
+			SendPingTimeout: http2PingAfterIdle,
+			PingTimeout:     http2PingTimeout,
+		},
 	}
 	var httpClient *http.Client = &http.Client{
 		Timeout:   cfg.RequestTimeout,

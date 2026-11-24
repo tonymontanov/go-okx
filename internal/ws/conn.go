@@ -499,6 +499,18 @@ func (c *Conn) failAllPending(err error) {
 	}
 }
 
+// healthyConnectionSpan — a connection that lived at least this long is
+// considered healthy: the next disconnect starts the backoff ladder from the
+// beginning. Without it the backoff only grew over the process lifetime, and
+// after a handful of reconnects every later one waited ReconnectMaxBackoff.
+const healthyConnectionSpan time.Duration = 30 * time.Second
+
+// connectionWasHealthy reports whether a connection that lived for lived
+// resets the reconnect backoff.
+func connectionWasHealthy(lived time.Duration) bool {
+	return lived >= healthyConnectionSpan
+}
+
 // supervise — main supervisor loop. Connects → reads → on error does backoff
 // and retries. Stops on ctx.Done.
 func (c *Conn) supervise(ctx context.Context) {
@@ -509,9 +521,16 @@ func (c *Conn) supervise(ctx context.Context) {
 			return
 		}
 
+		var started time.Time = time.Now()
 		var err error = c.connectAndRun(ctx)
 		if ctx.Err() != nil {
 			return
+		}
+		// A connection that lived long enough was healthy: restart the
+		// backoff ladder instead of continuing from an outage long ago.
+		if connectionWasHealthy(time.Since(started)) {
+			backoff = c.cfg.ReconnectInitialBackoff
+			attempt = 0
 		}
 		if err != nil {
 			c.logger.Warn("ws: connection error, will reconnect",
