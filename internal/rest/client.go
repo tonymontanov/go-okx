@@ -150,11 +150,15 @@ type Client struct {
 // stalled proxy flow, a dropped NAT entry) and every request times out until
 // the connection dies on its own, which can take minutes. A PING sent after
 // http2PingAfterIdle without any incoming frame and left unanswered for
-// http2PingTimeout closes the connection; the next request dials a new one.
-// An idle pooled connection costs one PING frame per http2PingAfterIdle.
+// http2PingTimeout closes the connection; the next request dials a new one, so
+// a request caught on a stalled connection waits at most ~3 s after the last
+// frame. An idle pooled connection costs one 17-byte PING frame per second;
+// none of the venues sent GOAWAY or closed a connection pinged that often in a
+// 2-minute live check (2026-11-24). A PING answer takes ~0.3 s even through a
+// proxy, so http2PingTimeout leaves a 6x margin.
 const (
-	http2PingAfterIdle = 5 * time.Second
-	http2PingTimeout   = 3 * time.Second
+	http2PingAfterIdle = 1 * time.Second
+	http2PingTimeout   = 2 * time.Second
 )
 
 // NewClient creates a REST client.
